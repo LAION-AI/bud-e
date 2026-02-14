@@ -157,7 +157,7 @@ function VoiceRecordButton({
     <button
       onClick={toggleRecording}
       disabled={!IS_BROWSER}
-      class={`absolute right-3 bottom-[3.7rem] disabled:opacity-50 disabled:cursor-not-allowed rounded-md p-2 bg-gray-100
+      class={`absolute right-3 bottom-[4rem] disabled:opacity-50 disabled:cursor-not-allowed rounded-md p-2 bg-gray-100
         ${isRecording ? "animate-pulse bg-red-600" : ""}`}
       title={isRecording ? "Aufnahme läuft" : "Sprache aufnehmen"}
     >

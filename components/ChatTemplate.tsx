@@ -1,3 +1,10 @@
+/**
+ * @file ChatTemplate.tsx
+ * @description Chat message display component with support for multimodal content
+ *              (text, images with unique IDs, PDFs), audio playback, message editing,
+ *              and auto-scroll functionality.
+ * @importantFunctions ChatTemplate, MessageToolbar, renderContentPart
+ */
 
 import { useEffect } from "preact/hooks";
 import { chatTemplateContent } from "../internalization/content.ts";
@@ -264,13 +271,64 @@ export default function ChatTemplate(props: {
       return <span key={idx}>{renderTextWithLinksAndBold(content.text)}</span>;
     }
     if (content?.type === "image_url") {
+      const imageId = content.id || null;
+
+      // Determine source from content.source, or infer from ID prefix
+      let imageSource = content.source;
+      if (!imageSource && imageId) {
+        if (imageId.startsWith("gen_") || imageId.startsWith("img_")) {
+          imageSource = "generated";
+        } else if (imageId.startsWith("upl_")) {
+          imageSource = "uploaded";
+        }
+      }
+      // Fallback: assume generated if it's a data URL with no other indicators
+      if (!imageSource) {
+        imageSource = content.image_url?.url?.startsWith("data:image") ? "generated" : "uploaded";
+      }
+
+      // Format display name for the badge
+      const displayLabel = imageSource === "generated" ? "Generated" : "Uploaded";
+      const badgeColor = imageSource === "generated" ? "bg-purple-500/70" : "bg-blue-500/70";
+
       return (
-        <img
-          key={idx}
-          src={content.image_url.url}
-          alt="User uploaded image"
-          class="max-w-[300px] w-full h-auto rounded-lg shadow-sm"
-        />
+        <div key={idx} class="relative inline-block">
+          <img
+            src={content.image_url.url}
+            alt={`${displayLabel} image${imageId ? ` (${imageId})` : ""}`}
+            class="max-w-[400px] w-full h-auto rounded-lg shadow-md cursor-pointer hover:shadow-lg transition-shadow"
+            onClick={() => {
+              // Open image in new tab for full view
+              const win = window.open();
+              if (win) {
+                win.document.write(`<img src="${content.image_url.url}" style="max-width:100%;height:auto;" />`);
+                win.document.title = imageId || displayLabel + " Image";
+              }
+            }}
+          />
+          {/* Image ID Badge - shown in corner for reference */}
+          {imageId && (
+            <div
+              class="absolute bottom-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded font-mono cursor-pointer hover:bg-black/80"
+              title={`Image ID: ${imageId} (click to copy)`}
+              onClick={(e) => {
+                e.stopPropagation();
+                navigator.clipboard.writeText(imageId);
+                // Visual feedback
+                const el = e.target as HTMLElement;
+                const original = el.textContent;
+                el.textContent = "Copied!";
+                setTimeout(() => { el.textContent = original; }, 1000);
+              }}
+            >
+              {imageId}
+            </div>
+          )}
+          {/* Source indicator */}
+          <div class={`absolute top-2 right-2 text-xs px-2 py-0.5 rounded ${badgeColor} text-white`}>
+            {displayLabel}
+          </div>
+        </div>
       );
     }
     if (content?.type === "pdf") {

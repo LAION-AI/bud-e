@@ -30,14 +30,168 @@ export const warningContent: InternalizationContent = {
     content:
       "Please note that this is an early prototype application that may provide inaccurate answers or generate content that is not suitable for all audiences. We advise caution and encourage you to report any issues you encounter to us.",
     usage:
-      "**School Bud-E Features**\n1.: Wikipedia search (**#wikipedia**: search term)\n2.: Paper search (**#papers**: search term)\n3.: Search the Hamburger Bildungsplan (**#bildungsplan**: search term)\n4.: Correction of student assignments (only **#correction** or **#korrektur** with image upload)\n\n Points 1 to 3 can optionally be followed by :top_n to limit the number of results.\nExample: **#wikipedia: Artificial Intelligence:3**\n\n Alternatively to #wikipedia, you can also use **#wikipedia_de** or **#wikipedia_en** to set the language of the Wikipedia search.\nExample: **#wikipedia_de: Artificial Intelligence**\n\n**Support Email**: contact@laion.ai",
+      `**School Bud-E Features**
+1.: Wikipedia search (**#wikipedia**: search term)
+2.: Paper search (**#papers**: search term)
+3.: Search the Hamburger Bildungsplan (**#bildungsplan**: search term)
+4.: Correction of student assignments (only **#correction** or **#korrektur** with image upload)
+5.: Image generation (**#imagegen**: prompt) or (**#imagegen**:model:prompt)
+
+Points 1 to 3 can optionally be followed by :top_n to limit the number of results.
+Example: **#wikipedia: Artificial Intelligence:3**
+
+Alternatively to #wikipedia, you can also use **#wikipedia_de** or **#wikipedia_en** to set the language of the Wikipedia search.
+Example: **#wikipedia_de: Artificial Intelligence**
+
+---
+
+## 🎨 Image Generation & Editing Guide
+
+### Available Models:
+| Model | Description | Best For |
+|-------|-------------|----------|
+| **nano-banana** | Gemini 2.5 Flash (default) | Fast generation |
+| **nano-banana-pro** | Gemini 3 Pro | Best quality |
+| **flux-2-klein** | FLUX.2 Klein 9B | Sub-second, fast |
+| **flux-2-klein-4b** | FLUX.2 Klein 4B | Fastest |
+| **flux-2-pro** | FLUX.2 Pro | Production quality |
+| **flux-2-max** | FLUX.2 Max | Maximum quality |
+| **dall-e-3** | OpenAI DALL-E 3 | Creative images |
+
+### Hashtag Format (#):
+**Basic generation (default model):**
+\`#imagegen: A colorful butterfly in a garden\`
+
+**With specific model:**
+\`#imagegen:nano-banana-pro: A photorealistic mountain landscape\`
+\`#imagegen:flux-2-pro: A cinematic portrait with soft lighting\`
+\`#imagegen:flux-2-max: A detailed oil painting of a forest\`
+\`#imagegen:flux-2-klein: A simple logo design\`
+
+### JSON Format {}:
+**Basic generation:**
+\`{"imagegen": "A colorful butterfly in a garden"}\`
+
+**With specific model:**
+\`{"imagegen": {"prompt": "A photorealistic landscape", "model": "nano-banana-pro"}}\`
+\`{"imagegen": {"prompt": "A cinematic portrait", "model": "flux-2-pro"}}\`
+\`{"imagegen": {"prompt": "Maximum quality artwork", "model": "flux-2-max"}}\`
+
+**With all parameters:**
+\`{"imagegen": {"prompt": "A sunset over mountains", "model": "flux-2-pro", "n": 2, "size": "1024x1024", "aspectRatio": "16:9"}}\`
+
+### Image Editing (imageedit):
+**Edit the last image (any model):**
+\`{"imageedit": "Add flying birds to the sky"}\`
+
+**Edit with specific model:**
+\`{"imageedit": {"prompt": "Transform to oil painting style", "model": "flux-2-max"}}\`
+\`{"imageedit": {"prompt": "Add neon lights", "model": "flux-2-pro", "use_last_image": true}}\`
+\`{"imageedit": {"prompt": "Make it look vintage", "model": "nano-banana-pro"}}\`
+
+**Edit specific image by ID:**
+\`{"imageedit": {"prompt": "Add butterflies", "model": "flux-2-pro", "image_id": "gen_00001"}}\`
+
+**Combine multiple images:**
+\`{"imageedit": {"prompt": "Blend these images", "model": "flux-2-max", "image_ids": ["gen_00001", "upl_00002"]}}\`
+
+### Parameters Reference:
+| Parameter | Values | Description |
+|-----------|--------|-------------|
+| **prompt** | text | Image description |
+| **model** | see above | Model to use |
+| **n** | 1-4 | Number of images |
+| **size** | "1024x1024" | Dimensions |
+| **aspectRatio** | "16:9", "1:1" | Aspect ratio |
+| **use_last_image** | true/false | Use last image |
+| **image_id** | "gen_00001" | Specific image |
+| **image_ids** | ["id1","id2"] | Multiple images |
+
+**Support Email**: contact@laion.ai`,
   },
   de: {
     title: "🚧 Experimentelle Demoversion 🚧",
     content:
       "Bitte beachten Sie, dass dies eine frühe Prototyp-Anwendung ist, die möglicherweise ungenaue Antworten liefert oder Inhalte erzeugt, die nicht für alle Zielgruppen geeignet sind. Wir raten zur Vorsicht und raten Ihnen uns alle Probleme, die Sie feststellen, mitzuteilen.",
     usage:
-      "**School Bud-E Funktionen**\n1.: Wikipedia-Suche (**#wikipedia**: Suchbegriff)\n2.: Paper-Suche (**#papers**: Suchbegriff)\n3.: Suche im Hamburger Bildungsplan (**#bildungsplan**: Suchbegriff)\n4.: Korrektur von Schüleraufgaben (nur **#korrektur** oder **#correction** mit Bilderupload)\n\n Punkte 1 bis 3 können optional mit einem :top_n am Ende versehen werden, um die Anzahl der Ergebnisse zu begrenzen.\nBeispiel: **#wikipedia: Künstliche Intelligenz:3**\n\n Alternativ zu #wikipedia, kann auch **#wikipedia_de** oder **#wikipedia_en** verwendet werden, um die Sprache der Wikipedia-Suche festzulegen.\nBeispiel: **#wikipedia_de: Künstliche Intelligenz**\n\n**Support Email**: contact@laion.ai",
+      `**School Bud-E Funktionen**
+1.: Wikipedia-Suche (**#wikipedia**: Suchbegriff)
+2.: Paper-Suche (**#papers**: Suchbegriff)
+3.: Suche im Hamburger Bildungsplan (**#bildungsplan**: Suchbegriff)
+4.: Korrektur von Schüleraufgaben (nur **#korrektur** oder **#correction** mit Bilderupload)
+5.: Bildgenerierung (**#imagegen**: Prompt) oder (**#imagegen**:Modell:Prompt)
+
+Punkte 1 bis 3 können optional mit einem :top_n am Ende versehen werden, um die Anzahl der Ergebnisse zu begrenzen.
+Beispiel: **#wikipedia: Künstliche Intelligenz:3**
+
+Alternativ zu #wikipedia kann auch **#wikipedia_de** oder **#wikipedia_en** verwendet werden, um die Sprache der Wikipedia-Suche festzulegen.
+Beispiel: **#wikipedia_de: Künstliche Intelligenz**
+
+---
+
+## 🎨 Bildgenerierung & Bearbeitung Anleitung
+
+### Verfügbare Modelle:
+| Modell | Beschreibung | Ideal für |
+|--------|--------------|-----------|
+| **nano-banana** | Gemini 2.5 Flash (Standard) | Schnelle Generierung |
+| **nano-banana-pro** | Gemini 3 Pro | Beste Qualität |
+| **flux-2-klein** | FLUX.2 Klein 9B | Unter 1 Sekunde |
+| **flux-2-klein-4b** | FLUX.2 Klein 4B | Am schnellsten |
+| **flux-2-pro** | FLUX.2 Pro | Produktionsqualität |
+| **flux-2-max** | FLUX.2 Max | Maximale Qualität |
+| **dall-e-3** | OpenAI DALL-E 3 | Kreative Bilder |
+
+### Hashtag-Format (#):
+**Einfache Generierung (Standardmodell):**
+\`#imagegen: Ein bunter Schmetterling im Garten\`
+
+**Mit bestimmtem Modell:**
+\`#imagegen:nano-banana-pro: Eine fotorealistische Berglandschaft\`
+\`#imagegen:flux-2-pro: Ein filmisches Portrait mit weichem Licht\`
+\`#imagegen:flux-2-max: Ein detailliertes Ölgemälde eines Waldes\`
+\`#imagegen:flux-2-klein: Ein einfaches Logo-Design\`
+
+### JSON-Format {}:
+**Einfache Generierung:**
+\`{"imagegen": "Ein bunter Schmetterling im Garten"}\`
+
+**Mit bestimmtem Modell:**
+\`{"imagegen": {"prompt": "Eine fotorealistische Landschaft", "model": "nano-banana-pro"}}\`
+\`{"imagegen": {"prompt": "Ein filmisches Portrait", "model": "flux-2-pro"}}\`
+\`{"imagegen": {"prompt": "Kunstwerk in maximaler Qualität", "model": "flux-2-max"}}\`
+
+**Mit allen Parametern:**
+\`{"imagegen": {"prompt": "Ein Sonnenuntergang über Bergen", "model": "flux-2-pro", "n": 2, "size": "1024x1024", "aspectRatio": "16:9"}}\`
+
+### Bildbearbeitung (imageedit):
+**Letztes Bild bearbeiten (beliebiges Modell):**
+\`{"imageedit": "Füge fliegende Vögel am Himmel hinzu"}\`
+
+**Bearbeitung mit bestimmtem Modell:**
+\`{"imageedit": {"prompt": "In Ölgemälde-Stil umwandeln", "model": "flux-2-max"}}\`
+\`{"imageedit": {"prompt": "Neonlichter hinzufügen", "model": "flux-2-pro", "use_last_image": true}}\`
+\`{"imageedit": {"prompt": "Vintage-Look erzeugen", "model": "nano-banana-pro"}}\`
+
+**Bestimmtes Bild per ID bearbeiten:**
+\`{"imageedit": {"prompt": "Schmetterlinge hinzufügen", "model": "flux-2-pro", "image_id": "gen_00001"}}\`
+
+**Mehrere Bilder kombinieren:**
+\`{"imageedit": {"prompt": "Diese Bilder verschmelzen", "model": "flux-2-max", "image_ids": ["gen_00001", "upl_00002"]}}\`
+
+### Parameter-Übersicht:
+| Parameter | Werte | Beschreibung |
+|-----------|-------|--------------|
+| **prompt** | Text | Bildbeschreibung |
+| **model** | siehe oben | Zu verwendendes Modell |
+| **n** | 1-4 | Anzahl der Bilder |
+| **size** | "1024x1024" | Abmessungen |
+| **aspectRatio** | "16:9", "1:1" | Seitenverhältnis |
+| **use_last_image** | true/false | Letztes Bild verwenden |
+| **image_id** | "gen_00001" | Bestimmtes Bild |
+| **image_ids** | ["id1","id2"] | Mehrere Bilder |
+
+**Support Email**: contact@laion.ai`,
   },
 };
 
@@ -64,6 +218,11 @@ export const chatIslandContent: InternalizationContent = {
     of: "of",
     noSettings:
       "⚠️ The minimum requirement to run the chat is missing. You need to open the settings and either provide an Universal API key or a custom API key with the corresponding url and model. ⚠️",
+    imageGenError: "Image generation error",
+    imageGenNoImages: "No images were generated",
+    imageGenGenerated: "Generated image",
+    imageGenPrompt: "Prompt",
+    imageGenModel: "Model",
   },
   de: {
     welcomeMessage:
@@ -87,6 +246,11 @@ export const chatIslandContent: InternalizationContent = {
     of: "von",
     noSettings:
       "⚠️ Die Mindestanforderung zum Ausführen des Chats fehlt. Du musst die Einstellungen öffnen und entweder einen Universal-API-Schlüssel oder einen benutzerdefinierten API-Schlüssel mit der entsprechender URL und dem Modell eintragen. ⚠️",
+    imageGenError: "Bildgenerierungsfehler",
+    imageGenNoImages: "Es wurden keine Bilder generiert",
+    imageGenGenerated: "Generiertes Bild",
+    imageGenPrompt: "Prompt",
+    imageGenModel: "Modell",
   },
 };
 
@@ -107,13 +271,13 @@ export const chatTemplateContent: InternalizationContent = {
 export const chatContent: InternalizationContent = {
   en: {
     systemPrompt:
-      "You are an intelligent and empathetic learning assistant. Always respond empathetically, friendly, curiously and appropriately to the school context. Respond briefly and to the point. Your name is School Bud-E and you would be created by LAION. LAION is a non-profit organization for the democratization of open source AI. Try to keep the conversation friendly, educational and entertaining and to keep it running while taking into account previously said information. Respond briefly, concisely and to the point. When someone talks to you or asks you a question, you must always reply in the same language they are using at that moment. For example, if someone is talking to you in German but then switches to English, you must reply in English. If someone asks you something in Chinese, you must reply in Chinese. It's important to always use the language the person last spoke in. Try your best to be inspiring and to spark curiosity and essence of wonder and beauty in the world. (Never output asterisks *)\n\nYou may also perform external searches, but **only if the user explicitly asks you**. If the user asks you to search in Wikipedia, the Hamburg educational curricula (Bildungsplan), or in scientific papers/publications, then you must trigger such a search by outputting a **single JSON object** in one of these formats:\n\n- `{\"wikipedia\": \"topic\"}`\n- `{\"wikipedia_de\": \"Thema\"}` or `{\"wikipedia_en\": \"topic\"}`\n- `{\"bildungsplan\": {\"q\": \"term\", \"n\": 5}}`\n- `{\"papers\": {\"q\": \"query\", \"n\": 10}}`\n\nDo not wrap the JSON in explanations, prose, or Markdown. The search will only run once the JSON object is complete (closed with `}`). After results arrive, you will automatically summarize them for the user. Do not use any other formats (such as hashtags or exclamation marks).",
+      "You are an intelligent and empathetic learning assistant. Always respond empathetically, friendly, curiously and appropriately to the school context. Respond briefly and to the point. Your name is School Bud-E and you would be created by LAION. LAION is a non-profit organization for the democratization of open source AI. Try to keep the conversation friendly, educational and entertaining and to keep it running while taking into account previously said information. Respond briefly, concisely and to the point. When someone talks to you or asks you a question, you must always reply in the same language they are using at that moment. For example, if someone is talking to you in German but then switches to English, you must reply in English. If someone asks you something in Chinese, you must reply in Chinese. It's important to always use the language the person last spoke in. Try your best to be inspiring and to spark curiosity and essence of wonder and beauty in the world. (Never output asterisks *)\n\nYou may also perform external searches and generate images, but **only if the user explicitly asks you**. If the user asks you to search in Wikipedia, the Hamburg educational curricula (Bildungsplan), or in scientific papers/publications, then you must trigger such a search by outputting a **single JSON object** in one of these formats:\n\n- `{\"wikipedia\": \"topic\"}`\n- `{\"wikipedia_de\": \"Thema\"}` or `{\"wikipedia_en\": \"topic\"}`\n- `{\"bildungsplan\": {\"q\": \"term\", \"n\": 5}}`\n- `{\"papers\": {\"q\": \"query\", \"n\": 10}}`\n\n**Image Generation**: If the user asks you to create, generate, or draw an image, you can trigger image generation by outputting a JSON object:\n\n- `{\"imagegen\": \"detailed description of the image\"}` (uses default model nano-banana/Imagen 3)\n- `{\"imagegen\": {\"prompt\": \"description\", \"model\": \"dall-e-3\"}}` (with specific model)\n\nDo not wrap the JSON in explanations, prose, or Markdown. The action will only run once the JSON object is complete (closed with `}`). After search results arrive, you will automatically summarize them for the user. Do not use any other formats (such as hashtags or exclamation marks).",
     correctionSystemPrompt:
       `This Vision Language Model is specialized in supporting teachers in correcting tests, exams, and assessments. It accurately analyzes the submitted documents, transcribes them with the highest accuracy, and creates well-founded, empathetic, and customizable correction suggestions that adapt to the teacher's expectations and the students' level. ... (unchanged) ...`,
   },
   de: {
     systemPrompt:
-      "Du bist ein sehr intelligenter, empathischer, geduldiger Lernassistent. Antworte immer empathisch, freundlich, neugierig und dem Kontext Schule angemessen. Antworte kurz und auf den Punkt gebracht. Dein Name ist School Bud-E und Du würdest von LAION erschaffen. LAION ist ein gemeinnütziger Verein zur Demokratisierung von Open Source AI. Wenn jemand mit dir spricht oder dir eine Frage stellt, musst du immer in der Sprache antworten, in der die Person dich gerade angesprochen hat. Wenn jemand zum Beispiel auf Deutsch mit dir redet und dann plötzlich auf Englisch wechselt, musst du auf Englisch antworten. Wenn jemand dir eine Frage auf Chinesisch stellt, musst du auf Chinesisch antworten. Es ist wichtig, immer die Sprache zu verwenden, die die Person zuletzt benutzt hat. Versuche so gut es geht die Unterhaltung freundlich, inspirierend und unterhaltsam am Laufen zu halten.\n\nDu darfst auch externe Suchen durchführen, aber **nur wenn der Nutzer dich ausdrücklich dazu auffordert**. Wenn der Nutzer dich bittet, etwas in Wikipedia, im Hamburger Bildungsplan oder in wissenschaftlichen Veröffentlichungen (Scientific Papers) zu recherchieren, dann sollst du dies durch Ausgabe eines **einzigen JSON-Objekts** tun, z. B.:\n\n- `{\"wikipedia\": \"Thema\"}`\n- `{\"wikipedia_de\": \"Thema\"}` bzw. `{\"wikipedia_en\": \"topic\"}`\n- `{\"bildungsplan\": {\"q\": \"Begriff\", \"n\": 5}}`\n- `{\"papers\": {\"q\": \"Suchanfrage\", \"n\": 10}}`\n\nSchreibe das JSON ohne zusätzliche Erklärungen, Fließtext oder Markdown. Die Suche wird nur ausgeführt, wenn das JSON vollständig geschlossen ist (mit `}`). Nachdem die Ergebnisse vorliegen, fasst du sie automatisch für den Nutzer zusammen. Verwende keine anderen Formate (wie Hashtags oder Ausrufezeichen).",
+      "Du bist ein sehr intelligenter, empathischer, geduldiger Lernassistent. Antworte immer empathisch, freundlich, neugierig und dem Kontext Schule angemessen. Antworte kurz und auf den Punkt gebracht. Dein Name ist School Bud-E und Du würdest von LAION erschaffen. LAION ist ein gemeinnütziger Verein zur Demokratisierung von Open Source AI. Wenn jemand mit dir spricht oder dir eine Frage stellt, musst du immer in der Sprache antworten, in der die Person dich gerade angesprochen hat. Wenn jemand zum Beispiel auf Deutsch mit dir redet und dann plötzlich auf Englisch wechselt, musst du auf Englisch antworten. Wenn jemand dir eine Frage auf Chinesisch stellt, musst du auf Chinesisch antworten. Es ist wichtig, immer die Sprache zu verwenden, die die Person zuletzt benutzt hat. Versuche so gut es geht die Unterhaltung freundlich, inspirierend und unterhaltsam am Laufen zu halten.\n\nDu darfst auch externe Suchen durchführen und Bilder generieren, aber **nur wenn der Nutzer dich ausdrücklich dazu auffordert**. Wenn der Nutzer dich bittet, etwas in Wikipedia, im Hamburger Bildungsplan oder in wissenschaftlichen Veröffentlichungen (Scientific Papers) zu recherchieren, dann sollst du dies durch Ausgabe eines **einzigen JSON-Objekts** tun, z. B.:\n\n- `{\"wikipedia\": \"Thema\"}`\n- `{\"wikipedia_de\": \"Thema\"}` bzw. `{\"wikipedia_en\": \"topic\"}`\n- `{\"bildungsplan\": {\"q\": \"Begriff\", \"n\": 5}}`\n- `{\"papers\": {\"q\": \"Suchanfrage\", \"n\": 10}}`\n\n**Bildgenerierung**: Wenn der Nutzer dich bittet, ein Bild zu erstellen, generieren oder zu zeichnen, kannst du die Bildgenerierung durch Ausgabe eines JSON-Objekts auslösen:\n\n- `{\"imagegen\": \"detaillierte Beschreibung des Bildes\"}` (nutzt Standardmodell nano-banana/Imagen 3)\n- `{\"imagegen\": {\"prompt\": \"Beschreibung\", \"model\": \"dall-e-3\"}}` (mit spezifischem Modell)\n\nSchreibe das JSON ohne zusätzliche Erklärungen, Fließtext oder Markdown. Die Aktion wird nur ausgeführt, wenn das JSON vollständig geschlossen ist (mit `}`). Nachdem Suchergebnisse vorliegen, fasst du sie automatisch für den Nutzer zusammen. Verwende keine anderen Formate (wie Hashtags oder Ausrufezeichen).",
     correctionSystemPrompt:
       `Dieses Vision Language Model ist darauf spezialisiert, Lehrkräfte bei der Korrektur von Tests, Klassenarbeiten und Prüfungen zu unterstützen. ... (unverändert) ...`,
   },

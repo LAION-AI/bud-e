@@ -114,8 +114,20 @@ export const handler: Handlers = {
       }
 
       if (!useThisSttKey) {
-        return new Response("Missing STT API key", { status: 400 });
+        return new Response("Missing STT API key. Please configure STT settings or Universal API Key.", { status: 400 });
       }
+
+      if (!useThisSttUrl) {
+        return new Response("Missing STT URL. Please configure STT settings.", { status: 400 });
+      }
+
+      console.log("[STT] Request:", {
+        url: useThisSttUrl,
+        model: useThisSttModel,
+        keyPrefix: useThisSttKey?.slice(0, 10) + "...",
+        fileSize: audioFile.size,
+        fileType: audioFile.type,
+      });
 
       const sttFormData = new FormData();
       sttFormData.append("file", audioFile);
@@ -133,7 +145,14 @@ export const handler: Handlers = {
       if (!response.ok) {
         const errorBody = await response.text();
         console.error("STT API Error:", errorBody);
-        throw new Error(`STT API responded with status: ${response.status}`);
+        console.error("STT API URL used:", useThisSttUrl);
+        console.error("STT Model used:", useThisSttModel);
+        console.error("STT Key prefix:", useThisSttKey?.slice(0, 10) + "...");
+        // Return the actual error from the upstream API instead of generic message
+        return new Response(errorBody || `STT API responded with status: ${response.status}`, {
+          status: response.status,
+          headers: { "Content-Type": "text/plain" }
+        });
       }
 
       const transcription = await response.json();

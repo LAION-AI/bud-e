@@ -1,0 +1,892 @@
+================================================================================
+                    IMAGE GENERATION & EDITING USER GUIDE
+                            School Bud-E Frontend
+================================================================================
+
+This document explains how to use image generation and image editing features
+in School Bud-E. Both users and the AI assistant (agent) can trigger these
+features using JSON-style commands.
+
+================================================================================
+                           TABLE OF CONTENTS
+================================================================================
+
+1. AVAILABLE MODELS
+2. IMAGE GENERATION (imagegen)
+   2.1 Basic Usage
+   2.2 Full Options
+   2.3 Hashtag Format
+3. IMAGE EDITING (imageedit)
+   3.1 Using the Last Image
+   3.2 Reference Images by ID
+   3.3 Providing Base64 Images
+4. IMAGE IDENTIFIERS (IDs)
+   4.1 How IDs Work
+   4.2 Viewing IDs in the UI
+   4.3 Referencing Images by ID
+5. PARAMETERS REFERENCE
+6. PROGRESS INDICATORS
+7. EXAMPLES
+8. TROUBLESHOOTING
+
+================================================================================
+                         1. AVAILABLE MODELS
+================================================================================
+
+The following models are available for image generation:
+
+GOOGLE VERTEX AI MODELS:
+MODEL ALIAS             | ACTUAL MODEL                    | DESCRIPTION
+------------------------|----------------------------------|---------------------------
+nano-banana             | gemini-2.5-flash-image          | Fast, good quality (default)
+nano-banana-pro         | gemini-3-pro-image-preview      | Best quality, supports editing
+gemini-flash-image      | gemini-2.5-flash-image          | Same as nano-banana
+gemini-pro-image        | gemini-3-pro-image-preview      | Same as nano-banana-pro
+imagen                  | imagen-3.0-generate-002         | Google Imagen 3
+imagen-3                | imagen-3.0-generate-002         | Same as imagen
+imagen-4                | imagen-4.0-generate-001         | Google Imagen 4
+
+BLACK FOREST LABS FLUX.2 MODELS:
+MODEL ALIAS             | ACTUAL MODEL                    | DESCRIPTION
+------------------------|----------------------------------|---------------------------
+flux-2-klein-4b         | flux-2-klein-4b                 | Fastest, sub-second (~$0.014/img)
+flux-2-klein-9b         | flux-2-klein-9b                 | Better prompts (~$0.014/img)
+flux-2-pro              | flux-2-pro                      | Production-grade (~$0.03-0.05/img)
+flux-2-max              | flux-2-max                      | Max quality (~$0.07/img)
+flux                    | flux-2-pro                      | Alias for flux-2-pro
+flux-klein              | flux-2-klein-9b                 | Alias for flux-2-klein-9b
+flux-pro                | flux-2-pro                      | Alias for flux-2-pro
+flux-max                | flux-2-max                      | Alias for flux-2-max
+
+OPENAI MODELS:
+MODEL ALIAS             | ACTUAL MODEL                    | DESCRIPTION
+------------------------|----------------------------------|---------------------------
+dall-e-3                | dall-e-3                        | OpenAI DALL-E 3
+dall-e-2                | dall-e-2                        | OpenAI DALL-E 2
+
+RECOMMENDED MODELS:
+- For fast generation: nano-banana (gemini-2.5-flash-image) or flux-2-klein
+- For best quality: flux-2-max or nano-banana-pro (gemini-3-pro-image-preview)
+- For production use: flux-2-pro (balanced speed/quality)
+- For image editing: nano-banana, nano-banana-pro, or flux-2-* (all support references)
+
+FLUX.2 FEATURES:
+- flux-2-klein: Up to 4 reference images, sub-second generation
+- flux-2-pro/max: Up to 8 reference images, higher quality
+- All FLUX.2 models support image editing via input_images parameter
+- Max resolution: 4 megapixels (e.g., 2048x2048), multiples of 16
+
+NOTE: Model availability depends on your middleware configuration. If a model
+returns 404, it may not be enabled in your provider configuration.
+
+================================================================================
+                      2. IMAGE GENERATION (imagegen)
+================================================================================
+
+2.1 BASIC USAGE
+---------------
+
+Simple format - just provide a prompt:
+
+    {"imagegen": "A serene mountain landscape at sunset"}
+
+The system will use the default model (nano-banana) and generate one image.
+
+
+2.2 FULL OPTIONS
+----------------
+
+Full format with all options:
+
+    {"imagegen": {
+        "prompt": "A futuristic cityscape with flying cars",
+        "model": "nano-banana-pro",
+        "n": 2,
+        "size": "1024x1024",
+        "aspectRatio": "16:9"
+    }}
+
+Parameters explained:
+- prompt: (required) Description of the image to generate
+- model: (optional) Which model to use (default: nano-banana)
+- n: (optional) Number of images to generate, 1-4 (default: 1)
+- size: (optional) Image dimensions (default: 1024x1024)
+- aspectRatio: (optional) Aspect ratio like "16:9", "1:1", "4:3" (default: 1:1)
+
+
+2.3 HASHTAG FORMAT
+------------------
+
+Alternative format using hashtags (user input only):
+
+    #imagegen:A beautiful sunset over the ocean
+
+With model specified:
+
+    #imagegen:nano-banana-pro:A detailed portrait of a cat wearing a hat
+
+================================================================================
+                       3. IMAGE EDITING (imageedit)
+================================================================================
+
+Image editing allows you to modify existing images. Many models support
+image-to-image generation:
+
+MODELS THAT SUPPORT IMAGE EDITING:
+- nano-banana (gemini-2.5-flash-image) - Fast, good quality
+- nano-banana-pro (gemini-3-pro-image-preview) - Best quality
+- flux-2-klein-4b - Fastest (up to 4 reference images)
+- flux-2-klein-9b - Fast with better prompts (up to 4 refs)
+- flux-2-pro - Production quality (up to 8 reference images)
+- flux-2-max - Maximum quality (up to 8 reference images)
+
+
+3.1 USING THE LAST IMAGE
+------------------------
+
+The simplest way to edit an image is to reference the last image in the
+conversation. This works for:
+- Images you just generated
+- Images you uploaded
+
+Simple format (automatically uses the last image and default model):
+
+    {"imageedit": "Make the sky purple and add stars"}
+
+**WITH SPECIFIC MODEL** - Very important! You can choose any model:
+
+    {"imageedit": {
+        "prompt": "Make the sky purple and add stars",
+        "model": "flux-2-pro"
+    }}
+
+    {"imageedit": {
+        "prompt": "Transform to oil painting style",
+        "model": "flux-2-max"
+    }}
+
+    {"imageedit": {
+        "prompt": "Add neon lights and cyberpunk effects",
+        "model": "nano-banana-pro"
+    }}
+
+NOTE: If you provide a prompt but no explicit image reference, the system
+will AUTOMATICALLY use the last image in the conversation. This is the most
+convenient way to edit images.
+
+With explicit flag:
+
+    {"imageedit": {
+        "prompt": "Add butterflies flying around",
+        "model": "flux-2-pro",
+        "use_last_image": true
+    }}
+
+
+3.2 REFERENCE IMAGES BY ID
+--------------------------
+
+Every image in the conversation has a unique ID (e.g., "img_001", "img_002").
+You can reference specific images by their ID:
+
+Single image by ID:
+
+    {"imageedit": {
+        "prompt": "Make this look like a watercolor painting",
+        "image_id": "img_001"
+    }}
+
+Multiple images by IDs:
+
+    {"imageedit": {
+        "prompt": "Combine these two images into one scene",
+        "image_ids": ["img_001", "img_003"]
+    }}
+
+
+3.3 PROVIDING BASE64 IMAGES
+---------------------------
+
+You can also provide images directly as base64 data URLs:
+
+    {"imageedit": {
+        "prompt": "Combine these images into one scene",
+        "input_images": [
+            "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
+            "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAA..."
+        ]
+    }}
+
+Alternative key names for input_images:
+- input_images
+- inputImages
+- reference_images
+
+
+3.4 SPECIFYING A MODEL FOR IMAGE EDITING
+-----------------------------------------
+
+**IMPORTANT**: You can use ANY supported model for image editing! Just add the
+"model" parameter. Here are examples with all available models:
+
+GOOGLE GEMINI MODELS:
+    {"imageedit": {
+        "prompt": "Transform to watercolor style",
+        "model": "nano-banana"
+    }}
+
+    {"imageedit": {
+        "prompt": "Add dramatic lighting",
+        "model": "nano-banana-pro"
+    }}
+
+BLACK FOREST LABS FLUX.2 MODELS:
+    {"imageedit": {
+        "prompt": "Make it look cyberpunk with neon lights",
+        "model": "flux-2-klein"
+    }}
+
+    {"imageedit": {
+        "prompt": "Transform to cinematic style",
+        "model": "flux-2-pro"
+    }}
+
+    {"imageedit": {
+        "prompt": "Create maximum quality artistic rendering",
+        "model": "flux-2-max"
+    }}
+
+COMPLETE EXAMPLE WITH ALL PARAMETERS:
+    {"imageedit": {
+        "prompt": "Add flying minions with rocket backpacks",
+        "model": "flux-2-max",
+        "use_last_image": true,
+        "n": 2
+    }}
+
+EDITING SPECIFIC IMAGE WITH MODEL:
+    {"imageedit": {
+        "prompt": "Transform to Van Gogh painting style",
+        "model": "flux-2-pro",
+        "image_id": "gen_00001"
+    }}
+
+COMBINING MULTIPLE IMAGES WITH MODEL:
+    {"imageedit": {
+        "prompt": "Blend the person from first image into second background",
+        "model": "flux-2-max",
+        "image_ids": ["gen_00001", "upl_00002"]
+    }}
+
+================================================================================
+                       4. IMAGE IDENTIFIERS (IDs)
+================================================================================
+
+4.1 HOW IDs WORK
+----------------
+
+Every image in the conversation receives a unique identifier with a prefix
+indicating the source:
+
+- Generated images: gen_XXXXX (e.g., gen_00001, gen_00002)
+- Uploaded images:  upl_XXXXX (e.g., upl_00001, upl_00002)
+- Legacy format:    img_XXX (still supported for backwards compatibility)
+
+Key features:
+- IDs use 5 digits for large collections (up to 99,999 images)
+- IDs are globally unique across the entire conversation
+- Different prefixes make it clear where each image came from
+- IDs persist when saving/loading conversations
+
+Examples in order:
+- First image generated:  gen_00001
+- Second image uploaded:  upl_00002
+- Third image generated:  gen_00003
+- Fourth image uploaded:  upl_00004
+
+
+4.2 VIEWING IDs IN THE UI
+-------------------------
+
+In the chat interface, images display:
+
+- ID BADGE: Bottom-left corner shows the image ID (e.g., "gen_00001")
+  - Click to copy the ID to clipboard
+  - Useful for referencing in edit commands
+
+- SOURCE BADGE: Top-right corner shows "Generated" or "Uploaded"
+  - Purple = AI-generated image (gen_XXXXX)
+  - Blue = User-uploaded image (upl_XXXXX)
+
+- FULL VIEW: Click any image to open it in a new tab
+
+
+4.3 REFERENCING IMAGES BY ID
+----------------------------
+
+Use image IDs to edit specific images:
+
+    User: Edit gen_00001 to make it look vintage
+
+    Agent response:
+    {"imageedit": {
+        "prompt": "Apply a vintage filter with sepia tones and film grain",
+        "image_id": "gen_00001"
+    }}
+
+Combine multiple images:
+
+    {"imageedit": {
+        "prompt": "Create a collage from these images",
+        "image_ids": ["gen_00001", "upl_00002", "gen_00003"]
+    }}
+
+
+4.4 IMAGE CONTEXT IN MESSAGES
+-----------------------------
+
+When you upload images, the system automatically adds context hints:
+
+    [Attached image: upl_00001 (photo.jpg)]
+
+This helps the LLM understand what images are present in your message.
+The context includes:
+- The unique image ID
+- The original filename (for uploaded images)
+- The source type (uploaded vs generated)
+
+================================================================================
+                       5. PARAMETERS REFERENCE
+================================================================================
+
+IMAGEGEN PARAMETERS:
+--------------------
+| Parameter    | Type     | Required | Default        | Description           |
+|--------------|----------|----------|----------------|----------------------|
+| prompt       | string   | YES      | -              | Image description    |
+| model        | string   | no       | nano-banana    | Model to use         |
+| n            | number   | no       | 1              | Number of images 1-4 |
+| size         | string   | no       | 1024x1024      | Image dimensions     |
+| aspectRatio  | string   | no       | 1:1            | Aspect ratio         |
+| input_images | string[] | no       | []             | Reference images     |
+
+IMAGEEDIT PARAMETERS:
+---------------------
+| Parameter      | Type     | Required | Default      | Description           |
+|----------------|----------|----------|--------------|----------------------|
+| prompt         | string   | YES*     | "Edit image" | Edit instructions    |
+| model          | string   | no       | nano-banana  | Model to use         |
+| input_images   | string[] | no       | []           | Base64 images        |
+| use_last_image | boolean  | no       | auto**       | Use last image       |
+| image_id       | string   | no       | -            | Reference by ID      |
+| image_ids      | string[] | no       | []           | Reference multiple   |
+| n              | number   | no       | 1            | Number of outputs    |
+
+* prompt is the only truly required field
+** use_last_image defaults to TRUE if no other image source is specified
+
+PRIORITY ORDER FOR IMAGE SOURCE:
+1. input_images (explicit base64 data)
+2. image_id / image_ids (reference by ID)
+3. use_last_image (automatic fallback)
+
+SUPPORTED SIZES:
+----------------
+- 1024x1024 (square, default)
+- 1792x1024 (landscape)
+- 1024x1792 (portrait)
+- 1536x1024 (landscape)
+- 1024x1536 (portrait)
+
+SUPPORTED ASPECT RATIOS:
+------------------------
+- 1:1 (square, default)
+- 16:9 (widescreen)
+- 9:16 (vertical/mobile)
+- 4:3 (standard)
+- 3:4 (vertical standard)
+- 3:2 (photo)
+- 2:3 (vertical photo)
+
+================================================================================
+                       6. PROGRESS INDICATORS
+================================================================================
+
+The UI provides visual feedback during all upload and generation operations:
+
+UPLOAD PROGRESS:
+- Image uploads show a progress bar below the upload button
+- PDF uploads show a progress bar below the upload button
+- Audio uploads show a spinning indicator during transcription
+- All buttons change to a spinner icon while processing
+
+GENERATION PROGRESS:
+- A "Cancel" button appears during image generation
+- The chat shows a message while generating
+- Timeout is set to 120 seconds for long operations
+
+VISUAL INDICATORS:
+- Blue progress bar = File upload in progress
+- Spinning icon = Processing/waiting for response
+- "Cancel" button = Generation can be stopped
+
+================================================================================
+                          7. EXAMPLES
+================================================================================
+
+EXAMPLE 1: Simple image generation
+----------------------------------
+User: Generate an image of a happy dog playing in a park
+
+Agent response:
+{"imagegen": "A happy golden retriever playing fetch in a sunny park with green grass and trees"}
+
+Result: Creates gen_00001
+
+
+EXAMPLE 2: Multiple images with specific model
+----------------------------------------------
+User: Create 3 variations of a cyberpunk city
+
+Agent response:
+{"imagegen": {
+    "prompt": "A neon-lit cyberpunk city at night with rain and flying vehicles",
+    "model": "nano-banana-pro",
+    "n": 3,
+    "aspectRatio": "16:9"
+}}
+
+Result: Creates gen_00001, gen_00002, gen_00003
+
+
+EXAMPLE 3: Upload an image and describe it
+------------------------------------------
+User: [Uploads photo.jpg] Describe this image
+
+Result: Image is saved as upl_00001 with context hint "[Attached image: upl_00001 (photo.jpg)]"
+Agent: The uploaded image (upl_00001) shows...
+
+
+EXAMPLE 4: Edit the last generated image
+----------------------------------------
+User: Make the sky more colorful
+
+Agent response:
+{"imageedit": "Make the sky more colorful with orange, pink, and purple sunset colors"}
+
+Result: Automatically uses the last image, creates gen_00004
+
+
+EXAMPLE 5: Edit a specific image by ID
+--------------------------------------
+User: Make gen_00001 look like a Van Gogh painting
+
+Agent response:
+{"imageedit": {
+    "prompt": "Transform this image into the style of Vincent van Gogh with swirling brushstrokes",
+    "image_id": "gen_00001"
+}}
+
+Result: Creates gen_00005 based on gen_00001
+
+
+EXAMPLE 6: Combine multiple images
+----------------------------------
+User: Combine gen_00001 and upl_00002 into one scene
+
+Agent response:
+{"imageedit": {
+    "prompt": "Blend these two images together seamlessly into a single cohesive scene",
+    "image_ids": ["gen_00001", "upl_00002"]
+}}
+
+
+EXAMPLE 7: User using hashtag format
+------------------------------------
+User types directly:
+#imagegen:nano-banana-pro:A mystical forest with glowing mushrooms and fireflies
+
+
+EXAMPLE 8: Using FLUX.2 for high-quality generation
+----------------------------------------------------
+User: Generate a photorealistic portrait using FLUX
+
+Agent response:
+{"imagegen": {
+    "prompt": "A photorealistic portrait of a young woman with curly red hair, soft natural lighting, shallow depth of field, professional photography",
+    "model": "flux-2-max"
+}}
+
+Result: Creates gen_00001 with highest quality
+
+
+EXAMPLE 9: FLUX.2 style transfer with reference images
+------------------------------------------------------
+User: Transform this photo into cyberpunk style using FLUX
+
+Agent response:
+{"imageedit": {
+    "prompt": "Transform this scene into a cyberpunk aesthetic with neon lights, rain, and futuristic elements",
+    "model": "flux-2-pro",
+    "use_last_image": true
+}}
+
+Result: Creates gen_00002 with style transfer applied
+
+
+EXAMPLE 10: FLUX.2 multi-reference image editing
+------------------------------------------------
+User: Combine the person from gen_00001 with the background from upl_00002
+
+Agent response:
+{"imageedit": {
+    "prompt": "Place the person from the first image into the background of the second image, maintaining natural lighting and perspective",
+    "model": "flux-2-max",
+    "image_ids": ["gen_00001", "upl_00002"]
+}}
+
+Result: Creates gen_00003 combining both references
+
+
+EXAMPLE 11: Fast FLUX.2 generation with Klein model
+---------------------------------------------------
+User: Quickly generate a simple logo concept
+
+Agent response:
+{"imagegen": {
+    "prompt": "Minimalist logo design for a coffee shop, simple geometric shapes, modern, clean",
+    "model": "flux-2-klein"
+}}
+
+Result: Creates gen_00001 in sub-second time
+
+================================================================================
+                        8. TROUBLESHOOTING
+================================================================================
+
+ISSUE: "No image found to edit"
+SOLUTION: You need to either:
+- Generate an image first using {"imagegen": "..."}
+- Upload an image before trying to edit
+- Provide a valid image_id that exists in the conversation
+- Provide explicit input_images in your imageedit command
+
+ISSUE: "Image ID does not exist"
+SOLUTION: Check the conversation for available image IDs:
+- Click on images to see their ID badge
+- Generated images use gen_XXXXX format
+- Uploaded images use upl_XXXXX format
+- IDs are globally unique and sequential
+- If you cleared the chat, IDs reset
+
+ISSUE: Image generation times out
+SOLUTION: Image generation can take 30-60 seconds for complex prompts.
+The system has a 120-second timeout. If it still times out:
+- Try a simpler prompt
+- Check your middleware connection
+- Reduce the number of images (n parameter)
+
+ISSUE: "[object Object]" appears instead of image
+SOLUTION: This was a bug that has been fixed. If you see this:
+- Refresh the page
+- The fix ensures multimodal content (images) is preserved properly
+
+ISSUE: Model returns 404 error
+SOLUTION: The requested model may not be available in your setup:
+- Check that the model is enabled in your Google Cloud project
+- Try a different model (nano-banana is the most reliable)
+- Check middleware logs for more details
+
+ISSUE: Image quality is low
+SOLUTION: Use a higher-quality model:
+- nano-banana-pro for detailed work
+- Use a more detailed prompt
+- Avoid fast models for complex images
+
+ISSUE: Image editing doesn't work
+SOLUTION:
+- Make sure you're using a model that supports editing
+- Ensure there's an image to edit (check the ID or upload one)
+- Try being more specific in your edit prompt
+- Check that the image_id you referenced exists
+
+ISSUE: Multiple images (n:2) not working with edit
+SOLUTION: This has been fixed. The system now:
+- Auto-detects when no image source is provided
+- Automatically uses the last image if only prompt is given
+- Supports the n parameter for multiple output images
+
+ISSUE: Image description not working / no response after upload
+SOLUTION: When you upload an image and ask for description:
+- Check that VLM (Vision Language Model) is configured in settings
+- The system now adds context hints like "[Attached image: upl_00001 (photo.jpg)]"
+- Make sure the VLM endpoint is working (check middleware logs)
+- Try a simple prompt like "Describe this image" or "What do you see?"
+- Check browser console for any errors
+
+ISSUE: Uploaded and generated images have same ID
+SOLUTION: This has been fixed. Now:
+- Generated images use gen_XXXXX prefix
+- Uploaded images use upl_XXXXX prefix
+- IDs are globally unique across all images in the conversation
+- The system scans full message history to avoid collisions
+
+================================================================================
+                           NOTES FOR DEVELOPERS
+================================================================================
+
+The image generation system works through these files:
+- routes/api/imagegen.ts - API endpoint (120s timeout)
+- islands/ChatIsland/services/apiService.ts - Frontend API calls
+- islands/ChatIsland/utils/triggerParsing.ts - JSON trigger parsing
+- islands/ChatIsland/services/streamService.ts - Trigger execution & ID generation
+- islands/ChatIsland/types.ts - Type definitions (AutoTrigger, ImageContentPart)
+- components/ChatTemplate.tsx - Image display with ID badges
+- components/ImageUploadButton.tsx - Upload with progress tracking & ID assignment
+- components/PdfUploadButton.tsx - PDF upload with progress tracking
+- Admin_Bud-E/main.py - Middleware endpoint
+- Admin_Bud-E/providers.py - Provider implementations
+
+IMAGE ID FORMAT (NEW):
+----------------------
+- Generated images: gen_XXXXX (e.g., gen_00001)
+- Uploaded images:  upl_XXXXX (e.g., upl_00001)
+- Legacy format:    img_XXX (still supported for backwards compatibility)
+
+The ID format uses:
+- 3-letter prefix to indicate source (gen/upl/img)
+- 5-digit zero-padded number for large collections
+- Global uniqueness across the entire conversation
+
+Images are stored as base64 data URLs with metadata in the message content array:
+{
+  "role": "assistant",
+  "content": [
+    {"type": "text", "text": "Generated image..."},
+    {
+      "type": "image_url",
+      "image_url": {"url": "data:image/png;base64,..."},
+      "id": "gen_00001",
+      "source": "generated",
+      "timestamp": 1706900000000
+    }
+  ]
+}
+
+For uploaded images, additional metadata is included:
+{
+  "type": "image_url",
+  "image_url": {"url": "data:image/png;base64,...", "detail": "high"},
+  "id": "upl_00001",
+  "source": "uploaded",
+  "timestamp": 1706900000000,
+  "filename": "photo.jpg"
+}
+
+Image ID Functions (in streamService.ts):
+- generateImageId(messages, index) - Creates next gen_XXXXX ID
+- findHighestImageIdForPrefix(messages, prefix) - Finds max ID for prefix
+- findImageByIdInMessages(messages, id) - Looks up image by any ID format
+- getAllImageIds(messages) - Lists all image IDs with metadata
+- buildImageContextHints(images) - Creates text hints for LLM
+
+Image Upload Functions (in ImageUploadButton.tsx):
+- findAllHighestImageIds(messages) - Scans all formats (gen/upl/img)
+- generateUploadImageId(existingMax, index) - Creates upl_XXXXX IDs
+
+This format is preserved when:
+- Saving to localStorage
+- Downloading chat as JSON
+- Uploading/restoring chats
+
+================================================================================
+                    PROVIDER CONFIGURATION (ADMIN)
+================================================================================
+
+To use image generation models, you need to configure providers in the Admin UI
+(Admin → Providers). Each provider needs a name, base URL, and API key.
+
+VERTEX AI (Google Gemini / Imagen):
+-----------------------------------
+Provider Name: vertex
+Base URL: http://127.0.0.1:8001/v1  (local Vertex proxy)
+API Key: (optional for local proxy, or your service account)
+
+Required Routes (Admin → Routes):
+- Kind: IMAGE, Provider: vertex, Model: gemini-3-pro-image-preview
+- Kind: IMAGE, Provider: vertex, Model: gemini-2.5-flash-image
+- Kind: IMAGE, Provider: vertex, Model: imagen-4.0-generate-001
+
+
+BLACK FOREST LABS (FLUX.2):
+---------------------------
+Provider Name: bfl
+Base URL: https://api.bfl.ai
+API Key: Your BFL API key (get it from https://api.bfl.ai)
+
+To obtain a BFL API key:
+1. Go to https://api.bfl.ai
+2. Sign up or log in to your account
+3. Navigate to the API Keys section in your dashboard
+4. Create a new API key and copy it
+
+Required Routes (Admin → Routes):
+- Kind: IMAGE, Provider: bfl, Model: flux-2-pro
+- Kind: IMAGE, Provider: bfl, Model: flux-2-max
+- Kind: IMAGE, Provider: bfl, Model: flux-2-klein-9b
+- Kind: IMAGE, Provider: bfl, Model: flux-2-klein-4b
+
+Pricing (approximate):
+- flux-2-klein: ~$0.014/image (fastest)
+- flux-2-pro: ~$0.03-0.05/image (balanced)
+- flux-2-max: ~$0.07/image (highest quality)
+
+
+HYPRLAB (Alternative providers):
+--------------------------------
+Provider Name: hyprlab
+Base URL: https://api.hyprlab.io/v1
+API Key: Your HyprLab API key
+
+Required Routes:
+- Kind: IMAGE, Provider: hyprlab, Model: flux-2-dev
+- Kind: IMAGE, Provider: hyprlab, Model: seedream-4.5
+
+
+ROUTE PRIORITY:
+---------------
+Routes are tried in order of priority (lowest number first). If one provider
+fails, the system automatically falls back to the next available provider.
+
+Example priority setup:
+1. flux-2-pro (priority 1) - Primary, high quality
+2. gemini-2.5-flash-image (priority 2) - Fast fallback
+3. dall-e-3 (priority 10) - Emergency fallback
+
+
+MODEL PRICING (Admin → Pricing):
+--------------------------------
+Configure pricing per model for billing purposes:
+- Model: flux-2-pro, Type: IMAGE, Price/Image: 0.04
+- Model: flux-2-max, Type: IMAGE, Price/Image: 0.07
+- Model: flux-2-klein-9b, Type: IMAGE, Price/Image: 0.014
+- Model: gemini-3-pro-image-preview, Type: IMAGE, Price/Image: 0.02
+
+================================================================================
+                    QUICK REFERENCE CHEAT SHEET
+================================================================================
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                     IMAGE GENERATION - ALL FORMATS                           ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+HASHTAG FORMAT (#imagegen):
+---------------------------
+#imagegen: A beautiful sunset                           → Default model
+#imagegen:nano-banana: A colorful butterfly             → Gemini 2.5 Flash
+#imagegen:nano-banana-pro: A photorealistic portrait    → Gemini 3 Pro
+#imagegen:flux-2-klein: A simple logo                   → FLUX.2 Klein (fast)
+#imagegen:flux-2-pro: A cinematic landscape             → FLUX.2 Pro
+#imagegen:flux-2-max: A detailed oil painting           → FLUX.2 Max (best)
+#imagegen:dall-e-3: A creative illustration             → DALL-E 3
+
+
+JSON FORMAT (imagegen):
+-----------------------
+Simple:
+{"imagegen": "A beautiful sunset"}
+
+With model:
+{"imagegen": {"prompt": "A beautiful sunset", "model": "nano-banana"}}
+{"imagegen": {"prompt": "A photorealistic portrait", "model": "nano-banana-pro"}}
+{"imagegen": {"prompt": "A simple logo", "model": "flux-2-klein"}}
+{"imagegen": {"prompt": "A cinematic landscape", "model": "flux-2-pro"}}
+{"imagegen": {"prompt": "A detailed oil painting", "model": "flux-2-max"}}
+
+Full parameters:
+{"imagegen": {
+    "prompt": "A mountain at sunset",
+    "model": "flux-2-pro",
+    "n": 2,
+    "size": "1024x1024",
+    "aspectRatio": "16:9"
+}}
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                     IMAGE EDITING - ALL FORMATS                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+SIMPLE EDIT (uses last image, default model):
+{"imageedit": "Add flying birds to the sky"}
+
+EDIT WITH SPECIFIC MODEL:
+{"imageedit": {"prompt": "Add flying birds", "model": "nano-banana"}}
+{"imageedit": {"prompt": "Transform to oil painting", "model": "nano-banana-pro"}}
+{"imageedit": {"prompt": "Add neon cyberpunk effects", "model": "flux-2-klein"}}
+{"imageedit": {"prompt": "Add cinematic lighting", "model": "flux-2-pro"}}
+{"imageedit": {"prompt": "Create artistic masterpiece", "model": "flux-2-max"}}
+
+EDIT SPECIFIC IMAGE BY ID:
+{"imageedit": {
+    "prompt": "Add butterflies flying around",
+    "model": "flux-2-pro",
+    "image_id": "gen_00001"
+}}
+
+COMBINE MULTIPLE IMAGES:
+{"imageedit": {
+    "prompt": "Blend person from first into background of second",
+    "model": "flux-2-max",
+    "image_ids": ["gen_00001", "upl_00002"]
+}}
+
+COMPLETE EXAMPLE WITH ALL PARAMETERS:
+{"imageedit": {
+    "prompt": "Add flying minions with rocket backpacks",
+    "model": "flux-2-max",
+    "use_last_image": true,
+    "n": 2
+}}
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                          MODEL COMPARISON                                     ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+MODEL              │ SPEED    │ QUALITY │ REFS │ PRICE      │ BEST FOR
+───────────────────┼──────────┼─────────┼──────┼────────────┼─────────────────
+nano-banana        │ Fast     │ Good    │ 14   │ ~$0.01     │ Quick generation
+nano-banana-pro    │ Medium   │ Best    │ 14   │ ~$0.02     │ High quality
+flux-2-klein-4b    │ Fastest  │ Good    │ 4    │ ~$0.014    │ Real-time apps
+flux-2-klein-9b    │ Fast     │ Better  │ 4    │ ~$0.014    │ Fast + quality
+flux-2-pro         │ Medium   │ High    │ 8    │ ~$0.04     │ Production use
+flux-2-max         │ Slower   │ Best    │ 8    │ ~$0.07     │ Maximum quality
+dall-e-3           │ Medium   │ High    │ 0    │ ~$0.04     │ Creative images
+
+REFS = Maximum reference images for editing
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    PARAMETERS QUICK REFERENCE                                ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+IMAGEGEN PARAMETERS:
+- prompt          : (required) Text description of the image
+- model           : Model name (see table above)
+- n               : Number of images (1-4)
+- size            : "1024x1024", "1792x1024", "1024x1792"
+- aspectRatio     : "1:1", "16:9", "9:16", "4:3", "3:2"
+
+IMAGEEDIT PARAMETERS:
+- prompt          : (required) What changes to make
+- model           : Model name (see table above)
+- use_last_image  : true/false - edit the most recent image
+- image_id        : "gen_00001" - edit specific image
+- image_ids       : ["id1", "id2"] - combine multiple images
+- input_images    : ["data:image/..."] - provide base64 images
+- n               : Number of output images (1-4)
+
+================================================================================
+                              END OF DOCUMENT
+================================================================================

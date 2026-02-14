@@ -1,0 +1,3 @@
+image-generation-instructions.txt
+
+At the moment, it uses, when I want to generate with Nano Banana Pro images, like as model alias, image generation model alias, like my school buddy web front, and it uses Gemini 2.5 Flash image. But it should not use this, it should use Gemini 3 Pro for it. The model ID is Gemini 3 Pro Image Preview ( gemini-3-pro-image-preview). I want you to check the corresponding page and then, like, change this so that it will use this model. Therefore, you need to check the image generation instructions and also, like, the middleware that is processing these requests can be found in the admin buddy folder (./Admin_Bud-E).   https://docs.cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/3-pro-image?hl=de
