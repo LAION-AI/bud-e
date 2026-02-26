@@ -9,8 +9,8 @@ import { Handlers } from "$fresh/server.ts";
 
 const MIDDLEWARE_BASE_URL = Deno.env.get("MIDDLEWARE_URL") || "";
 
-// Default image generation model (Gemini 2.5 Flash Image)
-const DEFAULT_MODEL = "gemini-2.5-flash-image";
+// Default image generation model (FLUX.2 Klein - fast, sub-second generation)
+const DEFAULT_MODEL = "flux-2-klein-9b";
 
 /**
  * Model aliases for user convenience
@@ -173,7 +173,7 @@ async function generateWithMiddleware(
   model: string,
   middlewareUrl: string,
   apiKey: string,
-  options: { n?: number; size?: string; inputImages?: string[] },
+  options: { n?: number; size?: string; aspectRatio?: string; inputImages?: string[] },
   timeoutMs: number = 120000
 ): Promise<{ images: string[]; model?: string; error?: string }> {
   const actualModel = resolveModel(model);
@@ -189,6 +189,11 @@ async function generateWithMiddleware(
     size: options.size || "1024x1024",
     response_format: "b64_json",
   };
+
+  // Add aspect_ratio if provided (used by FLUX.2 and other providers)
+  if (options.aspectRatio) {
+    requestBody.aspect_ratio = options.aspectRatio;
+  }
 
   // Add input_images for image editing if provided
   if (options.inputImages && options.inputImages.length > 0) {
@@ -458,7 +463,7 @@ export const handler: Handlers = {
             model,
             middlewareUrl,
             universalApiKey,
-            { n, size, inputImages },
+            { n, size, aspectRatio, inputImages },
             120000 // 120 second timeout for middleware (image gen can be slow)
           );
 

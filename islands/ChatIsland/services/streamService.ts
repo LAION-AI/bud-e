@@ -632,10 +632,16 @@ export const startStream = async (
   // Build image context hints for the LLM to understand attached images
   const imageContextHints = images && images.length > 0 ? buildImageContextHints(images) : "";
 
-  // Combine user text with image context hints
-  const fullUserText = imageContextHints
-    ? `${userText}\n\n${imageContextHints}`
-    : userText;
+  // Build context of all available images from conversation history (for imageedit)
+  const allImageIds = getAllImageIds(previousMessages);
+  const availableImagesContext = allImageIds.length > 0
+    ? `[Available images for editing: ${allImageIds.map(img => img.id).join(", ")}]`
+    : "";
+
+  // Combine user text with image context hints and available images
+  const fullUserText = [userText, imageContextHints, availableImagesContext]
+    .filter(Boolean)
+    .join("\n\n");
 
   const contentPayload: unknown[] = [{ type: "text", text: fullUserText }];
   if (images && images.length > 0) {
