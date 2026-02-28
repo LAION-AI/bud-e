@@ -8,6 +8,7 @@
 import { useRef, useCallback } from "preact/hooks";
 import { Message } from "../types.ts";
 import { chatIslandContent } from "../../../internalization/content.ts";
+import { stripImagesForStorage, rehydrateImages } from "../services/imageStore.ts";
 
 export interface UseChatPersistenceParams {
   lang: string;
@@ -56,20 +57,30 @@ export const useChatPersistence = ({
    */
   const safePersist = useCallback(
     (msgs: Message[], suffix: string) => {
-      try {
-        localStorage.setItem("bude-chat-" + suffix, JSON.stringify(msgs));
-        const key = "bude-chat-" + suffix;
-        if (!localStorageKeys.includes(key)) {
-          setLocalStorageKeys((prev) => [...new Set([...prev, key])]);
+      const key = "bude-chat-" + suffix;
+
+      // Strip large base64 images to IndexedDB before saving to localStorage
+      stripImagesForStorage(msgs).then((stripped) => {
+        try {
+          localStorage.setItem(key, JSON.stringify(stripped));
+          if (!localStorageKeys.includes(key)) {
+            setLocalStorageKeys((prev) => [...new Set([...prev, key])]);
+          }
+        } catch (e: unknown) {
+          const error = e as { name?: string };
+          if (error?.name === "QuotaExceededError") {
+            console.warn("localStorage quota exceeded while saving chat.");
+          } else {
+            console.warn("Failed to persist messages:", e);
+          }
         }
-      } catch (e: unknown) {
-        const error = e as { name?: string };
-        if (error?.name === "QuotaExceededError") {
-          console.warn("localStorage quota exceeded while saving chat.");
-        } else {
-          console.warn("Failed to persist messages:", e);
-        }
-      }
+      }).catch((e) => {
+        // Fallback: try saving without stripping (may fail for large images)
+        console.warn("Image stripping failed, saving directly:", e);
+        try {
+          localStorage.setItem(key, JSON.stringify(msgs));
+        } catch { /* ignore */ }
+      });
     },
     [localStorageKeys, setLocalStorageKeys]
   );
@@ -148,9 +159,8 @@ export const useChatPersistence = ({
         .sort((a, b) => Number(a.slice(10)) - Number(b.slice(10)))[0]
         .slice(10);
 
-      setMessages(
-        JSON.parse(String(localStorage.getItem("bude-chat-" + nextChatSuffix)))
-      );
+      const nextMsgs = JSON.parse(String(localStorage.getItem("bude-chat-" + nextChatSuffix)));
+      rehydrateImages(nextMsgs).then((restored) => setMessages(restored)).catch(() => setMessages(nextMsgs));
       setCurrentChatSuffix(nextChatSuffix);
     } else {
       const welcome: Message[] = [
@@ -253,7 +263,7 @@ export const useChatPersistence = ({
           );
           setCurrentChatSuffix(newChatSuffix);
           const nextMsgs = chats["bude-chat-" + newChatSuffix];
-          setMessages(nextMsgs);
+          rehydrateImages(nextMsgs).then((restored) => setMessages(restored)).catch(() => setMessages(nextMsgs));
           safePersist(nextMsgs, newChatSuffix);
         } catch (error) {
           console.error("Error parsing JSON file:", error);

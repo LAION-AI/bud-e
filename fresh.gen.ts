@@ -23,6 +23,7 @@ import * as $ChatIsland_hooks_useChatPersistence from "./islands/ChatIsland/hook
 import * as $ChatIsland_hooks_useChatState from "./islands/ChatIsland/hooks/useChatState.ts";
 import * as $ChatIsland_index from "./islands/ChatIsland/index.ts";
 import * as $ChatIsland_services_apiService from "./islands/ChatIsland/services/apiService.ts";
+import * as $ChatIsland_services_imageStore from "./islands/ChatIsland/services/imageStore.ts";
 import * as $ChatIsland_services_streamService from "./islands/ChatIsland/services/streamService.ts";
 import * as $ChatIsland_types from "./islands/ChatIsland/types.ts";
 import * as $ChatIsland_utils_textProcessing from "./islands/ChatIsland/utils/textProcessing.ts";
@@ -61,6 +62,8 @@ const manifest = {
     "./islands/ChatIsland/index.ts": $ChatIsland_index,
     "./islands/ChatIsland/services/apiService.ts":
       $ChatIsland_services_apiService,
+    "./islands/ChatIsland/services/imageStore.ts":
+      $ChatIsland_services_imageStore,
     "./islands/ChatIsland/services/streamService.ts":
       $ChatIsland_services_streamService,
     "./islands/ChatIsland/types.ts": $ChatIsland_types,

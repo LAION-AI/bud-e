@@ -27,6 +27,7 @@ import {
   ChatHeader,
 } from "./ChatIsland/index.ts";
 import { startStream, StreamContext } from "./ChatIsland/services/streamService.ts";
+import { rehydrateImages } from "./ChatIsland/services/imageStore.ts";
 
 // Debug flag
 const DEBUG = true;
@@ -317,7 +318,7 @@ export default function ChatIsland({ lang }: { lang: string }) {
 
   // ============ useEffects ============
 
-  // 1) First load from localStorage
+  // 1) First load from localStorage, then rehydrate images from IndexedDB
   useEffect(() => {
     let lsKeys: string[] = Object.keys(localStorage).filter((key) =>
       key.startsWith("bude-chat-")
@@ -332,8 +333,14 @@ export default function ChatIsland({ lang }: { lang: string }) {
       { role: "assistant", content: [chatIslandContent[lang]["welcomeMessage"]] },
     ];
     state.setLocalStorageKeys(lsKeys);
-    state.setMessages(lsMsgs);
     state.setCurrentChatSuffix(currSuffix);
+
+    // Rehydrate images from IndexedDB (restores base64 data from idb:// placeholders)
+    rehydrateImages(lsMsgs).then((restored) => {
+      state.setMessages(restored);
+    }).catch(() => {
+      state.setMessages(lsMsgs); // Fallback: use messages without images
+    });
   }, []);
 
   // 2) Persist last assistant message when stream completes
@@ -432,7 +439,12 @@ export default function ChatIsland({ lang }: { lang: string }) {
         lsMsgs[0].content[0] = chatIslandContent[lang]["welcomeMessage"];
       }
     }
-    state.setMessages(lsMsgs);
+    // Rehydrate images from IndexedDB when switching chats
+    rehydrateImages(lsMsgs).then((restored) => {
+      state.setMessages(restored);
+    }).catch(() => {
+      state.setMessages(lsMsgs);
+    });
     audio.stopAndResetAudio();
     state.setStopList([]);
     resetComposerHeight();
