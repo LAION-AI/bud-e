@@ -2,151 +2,207 @@
 
 ![School Bud-E Banner](banner.png)
 
-Welcome to School Bud-E, your AI-powered educational assistant! 🚀
+Welcome to School Bud-E, your AI-powered educational assistant!
 
 [![Join us on Discord](https://img.shields.io/discord/823813159592001537?color=5865F2&logo=discord&logoColor=white)](https://discord.gg/xBPBXfcFHd)
 
-## 🌟 Overview
+## Overview
 
 School Bud-E is an intelligent and empathetic learning assistant designed to revolutionize the educational experience. Developed by [LAION](https://laion.ai) in collaboration with the ELLIS Institute Tübingen, Collabora, the Tübingen AI Center and the German Research Center for Artificial Intelligence (DFKI), and Intel, School Bud-E focuses on empathy, natural interaction, and personalized learning. A working demo of the application is available at [school.bud-e.ai](https://school.bud-e.ai).
 
-## 🚀 Features (WIP)
+## Features
 
-- 💬 Real-time responses to student queries
-- 🧠 Emotionally intelligent interactions
-- 🔄 Continuous conversation context
-- 👥 Multi-speaker and multi-language support
-- 🖥️ Local operation on consumer-grade hardware
-- 🔒 Privacy-focused design
+- **Real-time chat** with streaming responses
+- **Voice input** via Speech-to-Text (Whisper / Groq API)
+- **Text-to-Speech** playback for assistant responses
+- **Multi-language support** — English and German (internationalization)
+- **PDF upload and parsing** — send PDFs to the assistant for context
+- **Image upload** — share images with vision-capable models
+- **Experimental image generation** — generate and edit images via AI models (see below)
+- **Persistent chat history** — conversations saved to localStorage with images offloaded to IndexedDB
+- **Multi-chat management** — create, switch, rename, export, and import chat sessions
+- **Character consistency** — image generation supports character reference across turns
+- **Privacy-focused design** — local-first, no mandatory cloud dependency
 
-## 🛠️ Technology Stack
+## Experimental Image Generation
 
-- **Frontend**: Fresh framework (Preact-based)
+> **This branch includes experimental features for AI image generation and editing.**
+
+The frontend supports generating and editing images directly in the chat interface. Both users and the AI assistant can trigger image generation using simple commands.
+
+### Supported Models
+
+| Alias | Model | Description |
+|---|---|---|
+| `nano-banana` | `gemini-2.5-flash-image` | Fast Gemini image generation |
+| `nano-banana-pro` | `gemini-3-pro-image-preview` | Highest quality Gemini image generation |
+| `flux-2-klein` | `flux-2-klein-9b` | Fast FLUX.2 generation |
+| `flux-2-pro` | `flux-2-pro` | Balanced production quality |
+| `flux-2-max` | `flux-2-max` | Maximum quality |
+| `dall-e-3` | `dall-e-3` | OpenAI DALL-E 3 |
+
+### Quick Usage Examples
+
+**Generate an image:**
+```
+{"imagegen": "A serene mountain landscape at sunset"}
+```
+
+**Generate with a specific model:**
+```
+{"imagegen": {"prompt": "A futuristic cityscape", "model": "nano-banana-pro", "aspectRatio": "16:9"}}
+```
+
+**Edit the last image:**
+```
+{"imageedit": "Make the sky purple and add stars"}
+```
+
+**Hashtag format (user input):**
+```
+#imagegen:nano-banana-pro:A detailed portrait of a cat wearing a hat
+```
+
+For the full image generation guide including all parameters, models, and troubleshooting, see [image-generation-instructions.txt](image-generation-instructions.txt).
+
+### Image Persistence
+
+Images generated or uploaded in the chat are stored in IndexedDB (namespaced per chat session), preventing `QuotaExceededError` in localStorage. Conversations with images can be exported to JSON and re-imported with full image data intact.
+
+## Technology Stack
+
+- **Frontend**: [Fresh](https://fresh.deno.dev/) framework (Preact-based, Deno runtime)
 - **Styling**: Tailwind CSS
-- **Language Support**: Internationalization for English and German
+- **Language Support**: English and German (internationalization)
 - **AI Models**:
   - Speech-to-Text: Whisper Large V3 (via Groq API)
-  - Large Language Model: GPT-4o or equivalent
+  - LLM: GPT-4o or any OpenAI-compatible endpoint
+  - Image generation: Gemini Flash/Pro Image, FLUX.2 Klein/Pro/Max, Imagen 3/4, DALL-E 3
+- **Storage**: localStorage + IndexedDB for chat and image persistence
 
-## 🏗️ Project Structure
+## Project Structure
 
-- `routes/`: Application routes
-- `components/`: Reusable UI components
-- `islands/`: Interactive components (Fresh islands)
-- `internalization/`: Language-specific content
-- `static/`: Static assets
+```
+school-bud-e-frontend/
+├── routes/
+│   ├── api/
+│   │   ├── chat.ts          # LLM streaming endpoint
+│   │   ├── tts.ts           # Text-to-Speech endpoint
+│   │   ├── imagegen.ts      # Image generation endpoint
+│   │   ├── getClientId.ts   # Client session ID
+│   │   └── debug.ts         # Debug/health endpoint
+│   ├── index.tsx            # Main page
+│   ├── about.tsx            # About page
+│   └── _app.tsx             # App wrapper
+├── islands/
+│   ├── ChatIsland.tsx       # Main chat island (entry point)
+│   ├── ChatIsland/
+│   │   ├── hooks/           # State and persistence hooks
+│   │   ├── services/        # API calls, streaming, image store
+│   │   └── utils/           # Trigger parsing, helpers
+│   ├── Header.tsx
+│   └── Menu.tsx
+├── components/
+│   ├── ChatTemplate.tsx     # Chat UI rendering
+│   ├── Settings.tsx         # Settings panel
+│   ├── ImageUploadButton.tsx
+│   ├── PdfUploadButton.tsx
+│   ├── AudioUploadButton.tsx
+│   └── ...
+├── internalization/         # i18n content (EN/DE)
+├── static/                  # Static assets
+├── docker-compose/          # Docker deployment config
+└── image-generation-instructions.txt  # Full image gen guide
+```
 
-## 🚀 Getting Started: Development
+## Getting Started: Development
 
 1. Clone the repository:
-
    ```bash
    git clone https://github.com/LAION-AI/school-bud-e-frontend.git
+   cd school-bud-e-frontend
+   git checkout experimental
    ```
 
 2. Set up environment variables:
-   - Copy `.example.env` to `.env`
-   - Fill in the required API keys and endpoints
+   ```bash
+   cp .example.env .env
+   # Edit .env and fill in your API keys and endpoints
+   ```
 
 3. Run the development server:
-
    ```bash
-   cd school-bud-e-frontend
    deno task start
    ```
 
-4. Open `http://localhost:8000` in your browser
+4. Open `http://localhost:8000` in your browser.
 
-## 🚀 Getting Started: Production
+## Getting Started: Production
 
-1. Without docker
+**Without Docker:**
+```bash
+deno task build
+deno task preview
+```
 
-   ```bash
-   deno task build
-   deno task preview
-   ```
+**With Docker:**
+```bash
+git clone https://github.com/LAION-AI/school-bud-e-frontend.git
+cd school-bud-e-frontend
+cd docker-compose
+nano .env   # Adjust environment variables
+docker-compose up
+```
 
-2. With docker
+Then open `http://localhost:8000`.
 
-   ```bash
-   git clone https://github.com/LAION-AI/school-bud-e-frontend.git
-   cd school-bud-e-frontend
-   cd docker-compose
-   nano .env # Adjust environment variables accordingly
-   docker-compose up
-   ```
+## Environment Variables
 
-Then log into localhost:8000 in your browser.
+Key variables (set in `.env`):
 
-## Interaction Between API Routes and Chat Components
+| Variable | Description |
+|---|---|
+| `MIDDLEWARE_URL` | Base URL for the Admin Bud-E middleware |
+| `OPENAI_API_KEY` | OpenAI-compatible API key for LLM |
+| `GROQ_API_KEY` | Groq API key for Whisper STT |
+| `TTS_API_URL` | Text-to-Speech endpoint |
 
-This section describes how the various API routes and chat components interact within the application.
+See `.example.env` for the full list.
 
-### API Routes
+## Middleware (Admin Bud-E)
 
-- **`tts.ts`**:
-  - **Description**: Handles Text-to-Speech (TTS) requests. It receives text input and returns an audio response.
-  - **Endpoint**: `/api/tts`
-  - **Example Usage**: Fetching audio data for a given text input.
+The frontend communicates with a separate middleware service (Admin Bud-E) that handles:
+- LLM routing to multiple providers
+- Image generation (Gemini, FLUX.2, Imagen, DALL-E)
+- TTS and STT proxying
+- Provider configuration and pricing
 
-- **`chat.ts`**:
-  - **Description**: Manages chat messages. It processes incoming chat messages and returns appropriate responses.
-  - **Endpoint**: `/api/chat`
-  - **Example Usage**: Sending and receiving chat messages.
+The middleware is a separate repository and is not included here.
 
-- **`getClientId.ts`**:
-  - **Description**: Provides a unique client ID for each user session.
-  - **Endpoint**: `/api/getClientId`
-  - **Example Usage**: Generating a unique identifier for a new chat session.
+## API Routes
 
-### Chat Components
+- **`/api/chat`** — Streaming LLM chat endpoint
+- **`/api/tts`** — Text-to-Speech conversion
+- **`/api/imagegen`** — Image generation (supports Gemini, FLUX.2, Imagen, DALL-E)
+- **`/api/getClientId`** — Unique session ID generation
+- **`/api/debug`** — Health/debug information
 
-- **`ChatIsland.tsx`**:
-  - **Description**: Responsible for rendering the chat interface. It interacts with the chat API to send and receive messages.
-  - **Usage**: Uses the client ID obtained from the `getClientId` API to manage user sessions.
-  - **Example Usage**: Displaying the chat UI and handling user interactions.
+## Contributing
 
-- **`ChatTemplate.tsx`**:
-  - **Description**: Serves as a template for the chat interface. It defines the layout and structure of the chat UI.
-  - **Usage**: Used by `ChatIsland.tsx` to render the chat interface consistently.
-  - **Example Usage**: Providing a consistent layout for the chat interface.
+We welcome contributions! Please join our [Discord server](https://discord.com/invite/eq3cAMZtCC) or contact us at <contact@laion.ai>.
 
-### Interaction Flow
+## Disclaimer
 
-1. When a user opens the chat interface, `ChatIsland.tsx` requests a unique client ID from the `getClientId` API.
-2. The user sends a chat message through the chat interface rendered by `ChatIsland.tsx`.
-3. `ChatIsland.tsx` sends the message to the chat API endpoint.
-4. The chat API processes the message and returns a **streaming** response.
-5. `ChatIsland.tsx` updates the chat interface with the response reflected in `ChatTemplate.tsx`.
-6. If the user requests a TTS response, `ChatIsland.tsx` sends the text to the `tts` API endpoint.
-7. The `tts` API returns the audio data, which is then played back to the user.
+This is an experimental prototype application. It may produce inaccurate answers or generate content not suitable for all audiences. Use with caution and report issues via the [issue tracker](https://github.com/LAION-AI/school-bud-e-frontend/issues).
 
-By following this interaction flow, the application ensures a seamless chat experience for users.
-
-For more details, refer to the following files:
-
-- `routes/api/tts.ts`
-- `routes/api/chat.ts`
-- `routes/api/getClientId.ts`
-- `islands/ChatIsland.tsx`
-- `components/ChatTemplate.tsx`
-
-## 🤝 Contributing
-
-We welcome contributions to School Bud-E! Please join our [Discord server](https://discord.com/invite/eq3cAMZtCC) or contact us at <contact@laion.ai> to get involved.
-
-## 🚧 Experimental Demo Version
-
-Please note that this is an early prototype application that may provide inaccurate answers or generate content that is not suitable for all audiences. We advise caution and encourage you to report any issues you encounter to us.
-
-## 📄 License
+## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
-## 🙏 Acknowledgements
+## Acknowledgements
 
-Special thanks to LAION, ELLIS Institute Tübingen, Collabora, the Tübingen AI Center and the German Research Center for Artificial Intelligence (DFKI), and Intel for their contributions and support to this project.
+Special thanks to LAION, ELLIS Institute Tübingen, Collabora, the Tübingen AI Center and the German Research Center for Artificial Intelligence (DFKI), and Intel for their contributions and support.
 
 ---
 
-Built with ❤️ for the future of education.
+Built with for the future of education.

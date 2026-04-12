@@ -60,7 +60,8 @@ export const useChatPersistence = ({
       const key = "bude-chat-" + suffix;
 
       // Strip large base64 images to IndexedDB before saving to localStorage
-      stripImagesForStorage(msgs).then((stripped) => {
+      // Namespace by chat suffix to keep each chat's images separate
+      stripImagesForStorage(msgs, suffix).then((stripped) => {
         try {
           localStorage.setItem(key, JSON.stringify(stripped));
           if (!localStorageKeys.includes(key)) {
@@ -160,7 +161,7 @@ export const useChatPersistence = ({
         .slice(10);
 
       const nextMsgs = JSON.parse(String(localStorage.getItem("bude-chat-" + nextChatSuffix)));
-      rehydrateImages(nextMsgs).then((restored) => setMessages(restored)).catch(() => setMessages(nextMsgs));
+      rehydrateImages(nextMsgs, nextChatSuffix).then((restored) => setMessages(restored)).catch(() => setMessages(nextMsgs));
       setCurrentChatSuffix(nextChatSuffix);
     } else {
       const welcome: Message[] = [
@@ -210,12 +211,24 @@ export const useChatPersistence = ({
 
   /**
    * Exports all chats to a local JSON file.
+   * Rehydrates images from IndexedDB so the export contains full base64 data.
    */
-  const saveChatsToLocalFile = useCallback(() => {
+  const saveChatsToLocalFile = useCallback(async () => {
     const chats: Record<string, Message[]> = {};
+    const rehydratePromises: Promise<void>[] = [];
+
     for (const key of localStorageKeys) {
-      chats[key] = JSON.parse(String(localStorage.getItem(key)));
+      const raw = JSON.parse(String(localStorage.getItem(key)));
+      const suffix = key.slice(10); // strip "bude-chat-" prefix
+      rehydratePromises.push(
+        rehydrateImages(raw, suffix)
+          .then((restored) => { chats[key] = restored; })
+          .catch(() => { chats[key] = raw; })
+      );
     }
+
+    await Promise.all(rehydratePromises);
+
     const chatsString = JSON.stringify(chats);
     const blob = new Blob([chatsString], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -263,7 +276,7 @@ export const useChatPersistence = ({
           );
           setCurrentChatSuffix(newChatSuffix);
           const nextMsgs = chats["bude-chat-" + newChatSuffix];
-          rehydrateImages(nextMsgs).then((restored) => setMessages(restored)).catch(() => setMessages(nextMsgs));
+          rehydrateImages(nextMsgs, newChatSuffix).then((restored) => setMessages(restored)).catch(() => setMessages(nextMsgs));
           safePersist(nextMsgs, newChatSuffix);
         } catch (error) {
           console.error("Error parsing JSON file:", error);

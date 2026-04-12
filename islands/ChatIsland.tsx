@@ -336,7 +336,7 @@ export default function ChatIsland({ lang }: { lang: string }) {
     state.setCurrentChatSuffix(currSuffix);
 
     // Rehydrate images from IndexedDB (restores base64 data from idb:// placeholders)
-    rehydrateImages(lsMsgs).then((restored) => {
+    rehydrateImages(lsMsgs, currSuffix).then((restored) => {
       state.setMessages(restored);
     }).catch(() => {
       state.setMessages(lsMsgs); // Fallback: use messages without images
@@ -440,7 +440,7 @@ export default function ChatIsland({ lang }: { lang: string }) {
       }
     }
     // Rehydrate images from IndexedDB when switching chats
-    rehydrateImages(lsMsgs).then((restored) => {
+    rehydrateImages(lsMsgs, state.currentChatSuffix).then((restored) => {
       state.setMessages(restored);
     }).catch(() => {
       state.setMessages(lsMsgs);
