@@ -665,16 +665,24 @@ class ChatProvider extends ChangeNotifier {
             '\nVerfuegbare Faecher: ${bildungsplanSearch.availableFaecher.join(", ")}'
             '\nVerfuegbare Schulformen: ${bildungsplanSearch.availableSchulformen.join(", ")}';
       } else {
-        final buf = StringBuffer('\nBildungsplan-Suchergebnisse fuer "$query":\n');
-        for (final r in results) {
-          buf.writeln('--- ${r.page.sourceRef} (Score: ${r.score.toStringAsFixed(2)}) ---');
-          buf.writeln('URL: ${r.page.url}');
-          // Show first 800 chars of content
-          final preview = r.page.content.length > 800
-              ? '${r.page.content.substring(0, 800)}...' : r.page.content;
-          buf.writeln(preview);
+        final buf = StringBuffer('\nBildungsplan-Suchergebnisse fuer "$query" (${results.length} Treffer):\n\n');
+        for (var i = 0; i < results.length; i++) {
+          final r = results[i];
+          buf.writeln('TREFFER ${i + 1}: ${r.page.sourceRef}');
+          buf.writeln('Relevanz: ${r.score.toStringAsFixed(2)}');
+          buf.writeln('PDF-Link: ${r.page.pdfPageLink}');
+          buf.writeln('Originalzitat: "${r.snippet}"');
           buf.writeln();
         }
+        buf.writeln('ANWEISUNG (STRIKT EINHALTEN!):\n'
+            '1. Fasse die Ergebnisse fuer den Nutzer zusammen.\n'
+            '2. Nenne bei JEDEM Treffer: Fach, Schulform, Bundesland und Seitenzahl.\n'
+            '3. Zitiere die relevantesten Passagen WOERTLICH in Anfuehrungszeichen.\n'
+            '4. WICHTIG - Gib zu JEDEM Treffer den VOLLSTAENDIGEN klickbaren PDF-Link:\n'
+            '   Schreibe den Link IMMER so: URL#page=X (der Nutzer kann ihn dann anklicken)\n'
+            '   Beispiel: https://www.hamburg.de/.../informatik-data.pdf#page=27\n'
+            '5. Liste ALLE gefundenen Seiten auf, nicht nur die beste!\n'
+            '6. Der Nutzer MUSS die Links direkt anklicken koennen.');
         toolResultText += buf.toString();
       }
     }
@@ -1447,7 +1455,12 @@ Prompt-Tipps:
 [[tool:bildungsplan_search query="Suchbegriffe" fach="Informatik" schulform="Gymnasium"]]
 Durchsucht transkribierte Bildungsplaene mit BM25-Ranking.
 Optionale Filter: fach (z.B. Informatik, Mathematik), schulform (z.B. Gymnasium, Stadtteilschule).
-Gibt die relevantesten Seiten mit Seitenzahl, Quelle und Inhalt zurueck.
+WICHTIG - Bei JEDER Antwort auf Bildungsplan-Fragen MUSST du:
+1. Zu JEDEM Treffer den VOLLSTAENDIGEN PDF-Link mit Seitenzahl angeben: URL#page=X
+2. Die Links muessen IMMER als vollstaendige URL im Text stehen (klickbar!)
+3. Relevante Passagen WOERTLICH zitieren
+4. ALLE gefundenen Seiten auflisten, nicht nur die beste
+Beispiel-Antwort: "Auf Seite 27 steht: '...' (https://www.hamburg.de/.../informatik-data.pdf#page=27)"
 
 9. Unteragent — fuer komplexe mehrstufige Aufgaben:
 [[tool:run_agent instruction="Aufgabenbeschreibung"]]
