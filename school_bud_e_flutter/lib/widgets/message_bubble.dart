@@ -49,6 +49,9 @@ class MessageBubble extends StatelessWidget {
   final TtsService? ttsService;
   final String? universalApiKey;
   final AgentTask? agentTask;
+  final ({int index, int total})? branchInfo;
+  final void Function(int delta)? onSwitchBranch;
+  final VoidCallback? onRegenerate;
 
   const MessageBubble({
     super.key,
@@ -57,6 +60,9 @@ class MessageBubble extends StatelessWidget {
     this.ttsService,
     this.universalApiKey,
     this.agentTask,
+    this.branchInfo,
+    this.onSwitchBranch,
+    this.onRegenerate,
   });
 
   @override
@@ -175,8 +181,7 @@ class MessageBubble extends StatelessWidget {
                     color: colors.outline.withValues(alpha: 0.4),
                     onTap: () => _showEditDialog(context),
                   ),
-                  // TTS play/stop toggle (always visible for assistant messages,
-                  // works even when global TTS is off)
+                  // TTS play/stop toggle
                   if (!isUser && ttsService != null && universalApiKey != null)
                     _TtsToggle(
                       ttsService: ttsService!,
@@ -186,6 +191,38 @@ class MessageBubble extends StatelessWidget {
                       universalApiKey: universalApiKey!,
                       color: colors.outline.withValues(alpha: 0.4),
                     ),
+                  // Regenerate button (assistant only)
+                  if (!isUser && onRegenerate != null)
+                    _SmallAction(
+                      icon: Icons.refresh,
+                      tooltip: 'Neu generieren',
+                      color: colors.outline.withValues(alpha: 0.4),
+                      onTap: onRegenerate!,
+                    ),
+                  // Branch navigation
+                  if (branchInfo != null) ...[
+                    const SizedBox(width: 4),
+                    _SmallAction(
+                      icon: Icons.chevron_left,
+                      tooltip: 'Vorheriger Branch',
+                      color: branchInfo!.index > 0
+                          ? colors.primary : colors.outline.withValues(alpha: 0.2),
+                      onTap: branchInfo!.index > 0
+                          ? () => onSwitchBranch?.call(-1) : () {},
+                    ),
+                    Text(
+                      '${branchInfo!.index + 1}/${branchInfo!.total}',
+                      style: TextStyle(fontSize: 10, color: colors.outline),
+                    ),
+                    _SmallAction(
+                      icon: Icons.chevron_right,
+                      tooltip: 'Nächster Branch',
+                      color: branchInfo!.index < branchInfo!.total - 1
+                          ? colors.primary : colors.outline.withValues(alpha: 0.2),
+                      onTap: branchInfo!.index < branchInfo!.total - 1
+                          ? () => onSwitchBranch?.call(1) : () {},
+                    ),
+                  ],
                 ],
               ),
             ),

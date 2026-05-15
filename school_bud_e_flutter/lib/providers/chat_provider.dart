@@ -290,8 +290,8 @@ class ChatProvider extends ChangeNotifier {
           'Erwartungshorizont oder Bewertungskriterien? Wenn ja, lade ihn '
           'bitte auch hoch oder beschreibe die Kriterien. Wenn nicht, '
           'korrigiere ich nach bestem Wissen.');
-        _conversation.messages.add(Message.user(parts.join('\n\n')));
-        _conversation.messages.add(askMsg);
+        _conversation.addMessage(Message.user(parts.join('\n\n')));
+        _conversation.addMessage(askMsg);
         memory.addMessage(askMsg);
         _isLoading = false;
         notifyListeners();
@@ -300,7 +300,7 @@ class ChatProvider extends ChangeNotifier {
       }
       // Force agent spawn — pre-transcribe PDFs so agent has actual content
       final userMsg = Message.user(parts.join('\n\n'));
-      _conversation.messages.add(userMsg);
+      _conversation.addMessage(userMsg);
       memory.addMessage(userMsg);
       _conversation.autoTitle();
       notifyListeners();
@@ -308,7 +308,7 @@ class ChatProvider extends ChangeNotifier {
       final agentMsg = Message.assistant(
         'Ich starte einen Agenten, der die Klassenarbeiten analysiert und korrigiert. '
         'Das kann einen Moment dauern...');
-      _conversation.messages.add(agentMsg);
+      _conversation.addMessage(agentMsg);
       memory.addMessage(agentMsg);
       notifyListeners();
 
@@ -361,7 +361,7 @@ class ChatProvider extends ChangeNotifier {
       parts.join('\n\n'),
       files: allMediaFiles.isNotEmpty ? allMediaFiles : null,
     );
-    _conversation.messages.add(userMsg);
+    _conversation.addMessage(userMsg);
     memory.addMessage(userMsg);
     _conversation.autoTitle();
     _isLoading = true;
@@ -393,7 +393,7 @@ class ChatProvider extends ChangeNotifier {
       final fullSystemPrompt = _buildSystemPrompt(builtCtx);
 
       final assistantMsg = Message.assistant('');
-      _conversation.messages.add(assistantMsg);
+      _conversation.addMessage(assistantMsg);
       notifyListeners();
 
       await _streamResponse(
@@ -434,7 +434,7 @@ class ChatProvider extends ChangeNotifier {
     if (text.trim().isEmpty || _isLoading) return;
 
     final userMsg = Message.user(text);
-    _conversation.messages.add(userMsg);
+    _conversation.addMessage(userMsg);
     memory.addMessage(userMsg);
     _conversation.autoTitle();
     _isLoading = true;
@@ -471,6 +471,8 @@ class ChatProvider extends ChangeNotifier {
       }
 
       final fullSystemPrompt = _buildSystemPrompt(builtCtx);
+      debugLog(DebugSource.contextConstructor,
+          'System prompt: ${fullSystemPrompt.length} chars (~${estimateTokens(fullSystemPrompt)} tokens)');
 
       // Record context snapshot for debug screen
       DebugLog.instance.addContextSnapshot(ContextSnapshot(
@@ -487,7 +489,7 @@ class ChatProvider extends ChangeNotifier {
 
       // --- First LLM call ---
       final assistantMsg = Message.assistant('');
-      _conversation.messages.add(assistantMsg);
+      _conversation.addMessage(assistantMsg);
       notifyListeners();
 
       await _streamResponse(
@@ -699,7 +701,7 @@ class ChatProvider extends ChangeNotifier {
       'Antworte dem Nutzer NUR basierend auf diesen Daten. '
       'Erfinde NICHTS dazu.',
     );
-    _conversation.messages.add(toolResultMsg);
+    _conversation.addMessage(toolResultMsg);
     memory.addMessage(toolResultMsg);
     notifyListeners();
 
@@ -708,7 +710,7 @@ class ChatProvider extends ChangeNotifier {
 
     // Follow-up LLM call
     final followUpMsg = Message.assistant('');
-    _conversation.messages.add(followUpMsg);
+    _conversation.addMessage(followUpMsg);
     notifyListeners();
 
     await _streamResponse(
@@ -895,7 +897,7 @@ class ChatProvider extends ChangeNotifier {
         }
 
         final errorMsg = Message.assistant(userMessage);
-        _conversation.messages.add(errorMsg);
+        _conversation.addMessage(errorMsg);
         _isLoading = false;
         notifyListeners();
         return;
@@ -908,7 +910,7 @@ class ChatProvider extends ChangeNotifier {
       final b64 = data['b64_json'] as String?;
       if (b64 == null || b64.isEmpty) {
         final errorMsg = Message.assistant('Keine Musik generiert.');
-        _conversation.messages.add(errorMsg);
+        _conversation.addMessage(errorMsg);
         notifyListeners();
         return;
       }
@@ -938,14 +940,14 @@ class ChatProvider extends ChangeNotifier {
         'Klicke auf die Datei um sie abzuspielen.',
         files: [filePath],
       );
-      _conversation.messages.add(musicMsg);
+      _conversation.addMessage(musicMsg);
       memory.addMessage(musicMsg);
       _isLoading = false;
       notifyListeners();
     } catch (e) {
       debugLog(DebugSource.mainAgent, 'Music gen error: $e');
       final errorMsg = Message.assistant('Musikgenerierung fehlgeschlagen: $e');
-      _conversation.messages.add(errorMsg);
+      _conversation.addMessage(errorMsg);
       _isLoading = false;
       notifyListeners();
     }
@@ -1015,7 +1017,7 @@ class ChatProvider extends ChangeNotifier {
         final errorMsg = Message.assistant(
             'Bildgenerierung fehlgeschlagen (${response.statusCode}). '
             'Bitte versuche es erneut.');
-        _conversation.messages.add(errorMsg);
+        _conversation.addMessage(errorMsg);
         memory.addMessage(errorMsg);
         notifyListeners();
         return;
@@ -1031,7 +1033,7 @@ class ChatProvider extends ChangeNotifier {
 
       if (b64 == null || b64.isEmpty) {
         final errorMsg = Message.assistant('Kein Bild generiert. Bitte versuche einen anderen Prompt.');
-        _conversation.messages.add(errorMsg);
+        _conversation.addMessage(errorMsg);
         memory.addMessage(errorMsg);
         notifyListeners();
         return;
@@ -1065,14 +1067,14 @@ class ChatProvider extends ChangeNotifier {
       imageMsg.metadata['imagePrompt'] = prompt;
       imageMsg.metadata['imageId'] = imageId;
 
-      _conversation.messages.add(imageMsg);
+      _conversation.addMessage(imageMsg);
       memory.addMessage(imageMsg);
       _isLoading = false;
       notifyListeners();
     } catch (e) {
       debugLog(DebugSource.mainAgent, 'Image gen error: $e');
       final errorMsg = Message.assistant('Bildgenerierung fehlgeschlagen: $e');
-      _conversation.messages.add(errorMsg);
+      _conversation.addMessage(errorMsg);
       memory.addMessage(errorMsg);
       _isLoading = false;
       notifyListeners();
@@ -1214,7 +1216,7 @@ class ChatProvider extends ChangeNotifier {
           '[[tool_result]]\nAgent fertig.\n$result${fileBuf.toString()}\n[[/tool_result]]\n\n'
           'Fasse kurz zusammen und nenne die Dateipfade.',
         );
-        _conversation.messages.add(resultMsg);
+        _conversation.addMessage(resultMsg);
         memory.addMessage(resultMsg);
         notifyListeners();
 
@@ -1228,7 +1230,7 @@ class ChatProvider extends ChangeNotifier {
             'Der Agent hat die Aufgabe erledigt.${task.generatedFiles.isNotEmpty
                 ? '\n\nDateien:\n${task.generatedFiles.map((f) => '- $f').join('\n')}'
                 : ''}');
-          _conversation.messages.add(fallback);
+          _conversation.addMessage(fallback);
           notifyListeners();
         }
       } else if (task.status == AgentTaskStatus.error) {
@@ -1237,7 +1239,7 @@ class ChatProvider extends ChangeNotifier {
           'Der Agent hatte einen Fehler: ${task.error}\n\n'
           'Soll ich es nochmal versuchen?',
         );
-        _conversation.messages.add(errorMsg);
+        _conversation.addMessage(errorMsg);
         memory.addMessage(errorMsg);
         notifyListeners();
       }
@@ -1246,7 +1248,7 @@ class ChatProvider extends ChangeNotifier {
       debugLog(DebugSource.agentRegistry, 'Agent runner crashed: $e');
       task.fail('Agent abgestuerzt: $e');
       final errorMsg = Message.assistant('Agent-Fehler: $e');
-      _conversation.messages.add(errorMsg);
+      _conversation.addMessage(errorMsg);
       notifyListeners();
     });
   }
@@ -1269,7 +1271,7 @@ class ChatProvider extends ChangeNotifier {
 
       final systemPrompt = _buildSystemPrompt(builtCtx);
       final followUp = Message.assistant('');
-      _conversation.messages.add(followUp);
+      _conversation.addMessage(followUp);
       notifyListeners();
 
       await _streamResponse(
@@ -1305,7 +1307,7 @@ class ChatProvider extends ChangeNotifier {
 
       final systemPrompt = _buildSystemPrompt(builtCtx);
       final followUp = Message.assistant('');
-      _conversation.messages.add(followUp);
+      _conversation.addMessage(followUp);
       notifyListeners();
 
       await _streamResponse(
@@ -1529,6 +1531,85 @@ REGELN:
   }
 
   // --- Conversation management -----------------------------------------------
+
+  /// Regenerate an assistant message at the given index.
+  /// Creates a new branch and generates a fresh response.
+  Future<void> regenerateMessage(int index) async {
+    if (index < 0 || index >= _conversation.messages.length) return;
+    final msg = _conversation.messages[index];
+    if (msg.role != MessageRole.assistant) return;
+    if (_isLoading) return;
+
+    debugLog(DebugSource.mainAgent, 'Regenerating message at index $index');
+
+    // Prepare regeneration: truncate active path at this message
+    _conversation.prepareRegenerate(index);
+
+    // The last message in the path should now be the user message
+    final userMsg = _conversation.messages.isNotEmpty
+        ? _conversation.messages.last : null;
+    if (userMsg == null || userMsg.role != MessageRole.user) return;
+
+    // Generate a new assistant response directly (without re-adding user msg)
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      BuiltContext builtCtx;
+      try {
+        final currentConvoText = memory.allMessages
+            .map((m) => '${m.role.name}: ${m.content}')
+            .join('\n');
+        builtCtx = await contextBuilder.buildContext(
+          episodicBudget: storage.episodicTokenBudget,
+          totalBudget: storage.totalContextBudget,
+          currentConversationText: currentConvoText,
+        ).timeout(const Duration(seconds: 10));
+        lastBuiltContext = builtCtx;
+      } catch (_) {
+        builtCtx = BuiltContext(
+          episodicContext: '', episodicTokens: 0, activatedMemories: [],
+          semanticContext: '', semanticTokens: 0, totalTokens: 0,
+        );
+      }
+
+      final fullSystemPrompt = _buildSystemPrompt(builtCtx);
+      final assistantMsg = Message.assistant('');
+      _conversation.addMessage(assistantMsg);
+      notifyListeners();
+
+      await _streamResponse(
+        assistantMsg: assistantMsg,
+        systemPrompt: fullSystemPrompt,
+        streamTts: true,
+      );
+
+      _isLoading = false;
+      _conversation.updatedAt = DateTime.now();
+      notifyListeners();
+
+      _processToolCallsAsync(assistantMsg, fullSystemPrompt);
+      _finishExchange(assistantMsg);
+    } catch (e) {
+      debugLog(DebugSource.mainAgent, 'Regeneration error: $e');
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Switch to a sibling branch at the given message.
+  /// [delta] is -1 for previous, +1 for next.
+  void switchBranch(String messageId, int delta) {
+    if (_conversation.switchBranch(messageId, delta)) {
+      debugLog(DebugSource.mainAgent, 'Switched branch for $messageId (delta=$delta)');
+      notifyListeners();
+      storage.saveConversation(_conversation).catchError((_) {});
+    }
+  }
+
+  /// Get branch info for a message: (index, total) or null.
+  ({int index, int total})? getBranchInfo(String messageId) =>
+      _conversation.getBranchInfo(messageId);
 
   Future<void> clearConversation() async {
     try {

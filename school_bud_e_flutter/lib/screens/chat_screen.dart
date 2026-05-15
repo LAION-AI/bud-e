@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import '../models/message.dart';
 import '../providers/chat_provider.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/chat_input.dart';
@@ -277,11 +278,19 @@ class _ChatScreenState extends State<ChatScreen> {
                           final task = taskId != null
                               ? chat.agentTasks[taskId]
                               : null;
+                          final branchInfo = chat.getBranchInfo(msg.id);
                           return MessageBubble(
                             message: msg,
                             ttsService: chat.ttsServiceForReplay,
                             universalApiKey: chat.universalApiKey,
                             agentTask: task,
+                            branchInfo: branchInfo,
+                            onSwitchBranch: branchInfo != null
+                                ? (delta) => chat.switchBranch(msg.id, delta)
+                                : null,
+                            onRegenerate: msg.role == MessageRole.assistant
+                                ? () => chat.regenerateMessage(i)
+                                : null,
                             onEdit: (_) {
                               chat.storage.saveConversation(chat.conversation)
                                   .catchError((_) {});

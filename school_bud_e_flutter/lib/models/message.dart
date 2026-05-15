@@ -94,6 +94,12 @@ class Message {
     return {'role': role.name, 'content': parts};
   }
 
+  /// Parent message ID for tree branching.
+  String? get parentId => metadata['parentId'] as String?;
+  set parentId(String? id) {
+    if (id != null) { metadata['parentId'] = id; } else { metadata.remove('parentId'); }
+  }
+
   /// Full JSON serialisation for persistence.
   Map<String, dynamic> toJson() => {
         'id': id,
