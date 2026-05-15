@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/chat_provider.dart';
 import '../config/api_config.dart';
+import '../utils/app_strings.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -212,7 +213,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       DropdownMenuItem(value: 'Espanol', child: Text('Espanol')),
                     ],
                     onChanged: (v) {
-                      if (v != null) chat.storage.setDefaultLanguage(v);
+                      if (v != null) {
+                        chat.storage.setDefaultLanguage(v);
+                        S.setLanguage(v);
+                      }
                     },
                   );
                 },
