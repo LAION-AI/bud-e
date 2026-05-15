@@ -1,137 +1,139 @@
-# School Bud-E Flutter App
+# BUD-E — Your AI Learning Companion
 
-Cross-platform AI-powered educational assistant — a Flutter proof-of-concept for [School Bud-E](https://github.com/LAION-AI/school-bud-e-frontend).
+**BUD-E is a friendly AI assistant that runs on your phone, tablet, or computer.** It can answer questions, search the web, create documents and presentations, generate images and music, and even search through education curricula — all through a simple chat interface with voice support.
 
-## Features
+Think of it as a personal assistant for students and teachers: you talk or type, and BUD-E helps you learn, create, and explore. It connects to AI services through a middleware server ([Admin Bud-E](https://github.com/LAION-AI/Admin_Bud-E)) that your school or organization controls — so your data stays private and costs stay manageable.
 
-- **Chat** with streaming LLM responses via the Admin Bud-E middleware
-- **Voice input** — tap mic to record, tap again to transcribe (ASR) and send
-- **Text-to-Speech** — auto-plays assistant responses (sanitized: no emojis/markdown read aloud)
-- **Configurable API key** — universal key format with encoded middleware URL
-- **Persistent memory** — all data saved as JSON files in `%APPDATA%/SchoolBudE/`
-- **Conversation history** — browse and reload past conversations
-- **Memory Explorer** — browse the JSON folder tree in-app
-- **Debug log** — real-time view of all component activity
+---
 
-## Memory Architecture
+## What BUD-E Can Do
 
-The app implements a three-tier memory system inspired by cognitive science:
-
-### Episodic Memory (`episodic_memory/`)
-Session-by-session conversation summaries. Loaded in **temporal order** up to a configurable token budget (default: 50,000 tokens). Provides the "what happened recently" context.
-
-### Semantic Memory (`semantic_memory/`)
-Individual concept files (knowledge base, facts, entities). Each JSON file includes:
-- **`triggerWords`** — keywords that activate this memory when found in the episodic context (case-insensitive, special-char-tolerant matching)
-- **`summary`** — 100-200 word summary (loaded when full content is too large for the budget)
-- **`relatedConcepts`** — pointers to other semantic files (knowledge graph edges, e.g., "camelot" → "king_arthur")
-- **`content`** — full detailed knowledge
-
-### Procedural Memory (`semantic_memory/procedural.json`)
-Communication patterns and interaction style notes. Also activated via trigger words.
-
-### Context Construction
-
-On each message, the **ContextBuilder** constructs the LLM context:
-
-1. Load episodic entries (most recent first) up to **episodic token budget** (default 50k)
-2. Scan the episodic text + current conversation for **trigger words**
-3. Activate matching semantic/procedural memory files
-4. Follow **relatedConcepts pointers** to activate more files (knowledge graph traversal)
-5. For each activated file: include **full content** if budget allows, otherwise **summary**
-6. Fill until **total context budget** is reached (default 100k tokens)
-
-### Background Memory Updater
-
-After every conversation exchange, the **MemoryUpdater** agent runs in the background:
-- Calls the LLM to extract structured information from the conversation
-- Creates/updates individual concept files with `triggerWords`, `summary`, `relatedConcepts`
-- Saves episodic summaries with topics
-- Updates procedural notes with interaction patterns
-- All writes are atomic (temp file + rename) to prevent corruption
-
-### BM25 Search Tool
-
-The main agent can invoke a memory search tool by outputting:
-```json
-{"tool": "memory_search", "query": "search keywords"}
-```
-This runs a **BM25 search** over an in-memory inverted index of all memory files, returning the top results with scores and summaries.
-
-## Settings
-
-Configurable in the Settings screen:
-
-| Setting | Default | Description |
-|---|---|---|
-| Episodic token budget | 50,000 | Max tokens loaded from episodic memory |
-| Total context budget | 100,000 | Max total context tokens (episodic + semantic) |
-| System prompt | (default) | Saved to `personality.json` |
-| Persona name | School Bud-E | Display name, saved to `personality.json` |
-| TTS enabled | true | Auto-play assistant responses |
-| API key | (test key) | Universal key with encoded middleware URL |
-
-## Data Folder Structure
-
-```
-%APPDATA%/SchoolBudE/
-  settings.json              ← API key, TTS, token budgets
-  personality.json           ← system prompt, persona name, traits
-  semantic_memory/
-    knowledge_base.json      ← accumulated facts with triggerWords
-    user_preferences.json    ← learning profile with triggerWords
-    procedural.json          ← interaction patterns with triggerWords
-    <concept_id>.json        ← individual concept files (auto-created)
-  episodic_memory/
-    session_<timestamp>.json ← conversation summaries
-  working_memory/
-    active_context.json      ← current session state
-  conversations/
-    <id>.json                ← full message history
-```
-
-## Platforms
-
-- Windows (primary)
-- Android, iOS, macOS (cross-platform compatible)
-
-## Getting Started
-
-```bash
-cd school_bud_e_flutter
-C:\dev\flutter\bin\flutter pub get
-C:\dev\flutter\bin\flutter run -d windows
-
-# Run tests
-C:\dev\flutter\bin\dart test
-```
+| Feature | Description |
+|---------|-------------|
+| **Chat** | Natural conversation with memory across sessions |
+| **Voice** | Speech-to-text input + text-to-speech output |
+| **Web Search** | Brave Search + Wikipedia + website scraping |
+| **Documents** | Create Word (.docx), PDF, HTML files with images |
+| **Presentations** | PowerPoint (.pptx) with AI-generated images per slide |
+| **Images** | Generate and edit images (Gemini, Imagen, FLUX.2) |
+| **Music** | Full songs with vocals and lyrics (Lyria 3 Pro, up to 3 min) |
+| **Curriculum Search** | Search through education plans with BM25 ranking |
+| **Memory** | Remembers facts, preferences, and conversation history |
+| **Multi-language** | Responds in the language you speak |
+| **Conversation Branching** | Regenerate responses, navigate between alternative branches |
 
 ## Architecture
 
 ```
-lib/
-├── main.dart                        # Entry point
-├── config/api_config.dart           # Key decoding, URL resolution
-├── services/
-│   ├── chat_service.dart            # LLM streaming (SSE)
-│   ├── tts_service.dart             # TTS with text sanitization
-│   ├── asr_service.dart             # Mic recording + transcription
-│   ├── file_storage_service.dart    # JSON file persistence
-│   ├── context_builder.dart         # Trigger-word context construction
-│   ├── memory_search.dart           # BM25 inverted index search
-│   ├── debug_log.dart               # Global debug event log
-│   └── storage_service.dart         # (legacy, migrated)
-├── models/                          # Message, Conversation (with JSON serialization)
-├── providers/chat_provider.dart     # Central state + tool calling
-├── memory/memory_store.dart         # Memory tiers + persistence hooks
-├── agents/
-│   ├── agent.dart                   # Sub-agent interface
-│   ├── agent_registry.dart          # Agent dispatch
-│   └── memory_updater.dart          # Background LLM memory extraction
-├── screens/
-│   ├── chat_screen.dart             # Main chat UI
-│   ├── settings_screen.dart         # Settings with token budget sliders
-│   ├── debug_screen.dart            # Debug tabs (Log, Context, Memory, Agents, Config, Files)
-│   └── memory_explorer_screen.dart  # JSON file browser
-└── widgets/                         # MessageBubble, ChatInput
+┌─────────────────────────────────────────────────┐
+│  BUD-E Flutter App (Android / iOS / Windows)    │
+│                                                 │
+│  ┌──────────┐  ┌──────────┐  ┌──────────────┐  │
+│  │ Chat UI  │  │ Voice IO │  │ File Viewer  │  │
+│  └────┬─────┘  └────┬─────┘  └──────────────┘  │
+│       │              │                          │
+│  ┌────▼──────────────▼─────────────────────┐    │
+│  │         Chat Provider (State)           │    │
+│  │  ┌─────────┐ ┌────────┐ ┌───────────┐  │    │
+│  │  │ Memory  │ │Context │ │  Skills   │  │    │
+│  │  │ Store   │ │Builder │ │ (Tools)   │  │    │
+│  │  └─────────┘ └────────┘ └───────────┘  │    │
+│  └─────────────────┬───────────────────────┘    │
+│                    │                            │
+└────────────────────┼────────────────────────────┘
+                     │ HTTPS / API Key
+                     ▼
+         ┌───────────────────────┐
+         │  Admin Bud-E Server   │
+         │  (Middleware Proxy)   │
+         └───────────┬───────────┘
+                     │
+          ┌──────────┼──────────┐
+          ▼          ▼          ▼
+     Google      Black Forest  Other
+     Vertex AI   Labs (FLUX)   Providers
 ```
+
+**Detailed documentation:**
+- **[Context & Memory System](docs/CONTEXT_AND_MEMORY.md)** — How BUD-E remembers and constructs context
+- **[Skills & Tools](docs/SKILLS_AND_TOOLS.md)** — All available tools and how they work
+- **[Document Generation](docs/DOCUMENT_GENERATION.md)** — DOCX, PDF, HTML, PPTX creation
+- **[Curriculum Search](docs/CURRICULUM_SEARCH.md)** — BM25 search over education plans
+
+---
+
+## Quick Start
+
+### Prerequisites
+- [Flutter SDK](https://flutter.dev/docs/get-started/install) (3.x+)
+- An [Admin Bud-E](https://github.com/LAION-AI/Admin_Bud-E) server running
+- An API key from your Admin Bud-E server
+
+### Install & Run
+
+```bash
+git clone https://github.com/LAION-AI/bud-e.git
+cd bud-e
+flutter pub get
+flutter run
+```
+
+### Configure
+
+1. Open BUD-E and go to **Settings** (gear icon)
+2. Enter your **API Key** in the format: `<key>#<encoded-server-address>`
+3. Start chatting!
+
+### Build
+
+```bash
+# Android APK
+flutter build apk --release
+
+# iOS
+flutter build ios --release
+
+# Windows
+flutter build windows --release
+```
+
+---
+
+## Project Structure
+
+```
+lib/
+├── main.dart                    # App entry point
+├── config/api_config.dart       # API key decoding, middleware URL
+├── models/
+│   ├── message.dart             # Message with tree branching (parentId)
+│   ├── conversation.dart        # Conversation with branch navigation
+│   └── agent_task.dart          # Sub-agent task tracking
+├── providers/
+│   └── chat_provider.dart       # Central state: chat, tools, agents, memory
+├── screens/                     # UI screens (chat, settings, debug, memory)
+├── services/
+│   ├── context_builder.dart     # Priority-based context construction
+│   ├── memory_search.dart       # BM25 search over memory files
+│   ├── bildungsplan_search.dart # BM25 search over education curricula
+│   ├── chat_service.dart        # LLM streaming
+│   ├── tts_service.dart         # Text-to-speech
+│   ├── asr_service.dart         # Speech-to-text recording
+│   └── file_storage_service.dart# Persistent storage
+├── memory/memory_store.dart     # Episodic + semantic memory management
+├── agents/
+│   ├── sub_agent_runner.dart    # Sub-agent with tool calling (DOCX, PPTX, etc.)
+│   ├── memory_updater.dart      # Background memory consolidation
+│   └── tools/                   # Web search, file ops, document generation
+└── widgets/                     # Message bubbles, file chips, agent status
+```
+
+---
+
+## Contributing
+
+Developed by [LAION](https://laion.ai) and collaborators. Contributions welcome!
+
+## License
+
+Apache 2.0
