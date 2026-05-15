@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../models/message.dart';
 import '../providers/chat_provider.dart';
+import '../utils/app_strings.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/chat_input.dart';
 import 'settings_screen.dart';
@@ -335,14 +336,14 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             const SizedBox(height: 20),
             Text(
-              'Hey! Ich bin $name',
+              S.welcomeTitle(name),
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w600,
                   ),
             ),
             const SizedBox(height: 8),
             Text(
-              'Dein freundlicher Assistent.\nSchreib mir oder tippe aufs Mikrofon.',
+              S.welcomeSubtitle,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: colors.onSurfaceVariant,
                     height: 1.5,
@@ -355,9 +356,8 @@ class _ChatScreenState extends State<ChatScreen> {
               runSpacing: 8,
               alignment: WrapAlignment.center,
               children: [
-                _SuggestionChip('Was macht dich aus?', context),
-                _SuggestionChip('Erzähl mir einen Witz', context),
-                _SuggestionChip('Was ist PERMA?', context),
+                for (final suggestion in S.welcomeSuggestions)
+                  _SuggestionChip(suggestion, context),
               ],
             ),
           ],

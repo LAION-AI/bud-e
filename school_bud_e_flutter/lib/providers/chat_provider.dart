@@ -24,6 +24,7 @@ import '../agents/memory_updater.dart';
 import '../agents/wikipedia_agent.dart';
 import '../agents/sub_agent_runner.dart';
 import '../services/bildungsplan_search.dart';
+import '../utils/app_strings.dart';
 import '../agents/tools/web_tools.dart' as web_tools;
 import '../services/image_registry.dart';
 import '../agents/tools/pdf_tools.dart' as pdf_tools;
@@ -92,6 +93,7 @@ class ChatProvider extends ChangeNotifier {
     bildungsplanSearch = BildungsplanSearch(
         p.join(storage.rootPath, 'bildungsplaene'));
     _memoryUpdater = MemoryUpdater(storage);
+    S.setLanguage(storage.defaultLanguage);
     debugLog(DebugSource.system, 'ChatProvider initialized');
 
     // Build BM25 indexes in background
@@ -933,13 +935,7 @@ class ChatProvider extends ChangeNotifier {
 
           if (errStr.contains('Prohibited Use') || errStr.contains('sensitive words') ||
               response.statusCode == 400) {
-            userMessage = 'Die Musikgenerierung wurde von Google abgelehnt — '
-                'der Text oder Prompt enthält Begriffe, die gegen die Content-Policy verstoßen.\n\n'
-                'Versuche den Text umzuformulieren:\n'
-                '- Vermeide kontroverse oder sensible Begriffe\n'
-                '- Halte Lyrics allgemeiner und positiver\n'
-                '- Schreibe den Prompt komplett auf Englisch\n\n'
-                'Soll ich den Prompt und die Lyrics für dich umschreiben?';
+            userMessage = S.musicPolicyError;
           } else {
             userMessage = 'Musikgenerierung fehlgeschlagen (${response.statusCode}): '
                 '${errStr.length > 200 ? '${errStr.substring(0, 200)}...' : errStr}';
