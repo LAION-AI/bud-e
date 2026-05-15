@@ -513,11 +513,64 @@ class ChatProvider extends ChangeNotifier {
             'Force-spawning agent for file creation task');
         _spawnSubAgent(text, '', assistantMsg);
       }
+
+      // Safety net: force bildungsplan search if LLM didn't use ANY tool
+      if (!assistantMsg.content.contains('[[tool:') &&
+          _looksLikeBildungsplanQuery(text)) {
+        debugLog(DebugSource.mainAgent,
+            'Force-triggering bildungsplan_search for: $text');
+        _forceBildungsplanSearch(text, assistantMsg, fullSystemPrompt);
+      }
     } catch (e) {
       debugLog(DebugSource.mainAgent, 'Fatal error: $e');
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  /// Detect if user asks about Bildungspläne/Lehrpläne.
+  bool _looksLikeBildungsplanQuery(String text) {
+    final lower = text.toLowerCase();
+    final keywords = ['lehrplan', 'bildungsplan', 'curriculum', 'unterrichtsinhalt',
+        'schulfach', 'rahmenplan', 'kerncurriculum', 'bildungsstandard',
+        'kompetenzbereich', 'themenfeld'];
+    final subjectKeywords = ['informatik', 'mathematik', 'deutsch', 'englisch',
+        'biologie', 'chemie', 'physik', 'geschichte', 'geographie', 'sport',
+        'religion', 'wirtschaft', 'sachunterricht', 'psychologie'];
+    // Must mention a curriculum-related keyword
+    final hasCurrKeyword = keywords.any((k) => lower.contains(k));
+    // Or must mention a subject + school context
+    final hasSubject = subjectKeywords.any((k) => lower.contains(k));
+    final hasSchoolCtx = ['schule', 'klasse', 'jahrgang', 'sekundar', 'grundschule',
+        'gymnasium', 'stadtteilschule', 'oberstufe', 'stufe'].any((k) => lower.contains(k));
+    return hasCurrKeyword || (hasSubject && hasSchoolCtx);
+  }
+
+  /// Force a bildungsplan search and append results directly.
+  Future<void> _forceBildungsplanSearch(
+      String userText, Message assistantMsg, String systemPrompt) async {
+    final query = userText.replaceAll(RegExp(r'[?!.,]'), '').trim();
+
+    await bildungsplanSearch.buildIndex();
+    final results = bildungsplanSearch.search(query, limit: 5);
+    if (results.isEmpty) return;
+
+    // Build a direct answer with links (don't rely on LLM to format)
+    final buf = StringBuffer('\n\nIch habe den Bildungsplan-Index durchsucht:\n\n');
+    for (var i = 0; i < results.length; i++) {
+      final r = results[i];
+      buf.writeln('**${r.page.sourceRef}** (Relevanz: ${r.score.toStringAsFixed(1)})');
+      buf.writeln('> ${r.snippet}');
+      if (r.page.pdfPageLink.isNotEmpty) {
+        buf.writeln('${r.page.pdfPageLink}');
+      }
+      buf.writeln();
+    }
+
+    // Append directly to the existing assistant message
+    assistantMsg.content += buf.toString();
+    notifyListeners();
+    storage.saveConversation(_conversation).catchError((_) {});
   }
 
   /// Detect if user wants file creation but BUD-E answered inline.
@@ -1486,6 +1539,10 @@ REGELN:
 - Du MUSST [[tool:news ...]] benutzen wenn nach Nachrichten gefragt wird.
 - Du MUSST [[tool:generate_music ...]] benutzen wenn Musik gewuenscht wird.
 - Du MUSST [[tool:run_agent ...]] benutzen wenn Dateien erstellt werden sollen.
+- Du MUSST [[tool:bildungsplan_search ...]] benutzen wenn nach Lehrplaenen, Bildungsplaenen, Curricula, Unterrichtsinhalten oder Schulfaechern gefragt wird.
+  AUCH WENN du glaubst die Antwort zu kennen: Benutze TROTZDEM den Tool-Call!
+  Der Nutzer erwartet exakte Seitenzahlen und klickbare PDF-Links.
+  Ohne Tool-Call hast du KEINE zuverlaessigen Seitenangaben!
 - Benutze [[tool:wikipedia ...]] UND dann ggf. run_agent fuer tiefere Recherche.
 - Text in [[...]] wird NICHT vorgelesen.
 - Wenn du ein Tool benutzt, schreibe NUR den Tool-Call.''';
