@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/chat_provider.dart';
 import '../config/api_config.dart';
+import '../models/agent_persona.dart';
 import '../utils/app_strings.dart';
+import 'skill_explorer_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -117,6 +119,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Text(
                 'Saved to personality.json',
                 style: TextStyle(fontSize: 11, color: colors.outline),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // ---- Skills ----
+          _SectionCard(
+            icon: Icons.extension,
+            title: S.isEnglish ? 'Skills' : 'Skills',
+            children: [
+              Text(
+                S.isEnglish
+                    ? 'Manage which tools and capabilities are available.'
+                    : 'Verwalte welche Tools und Faehigkeiten verfuegbar sind.',
+                style: TextStyle(fontSize: 12, color: colors.outline),
+              ),
+              const SizedBox(height: 8),
+              Consumer<ChatProvider>(
+                builder: (_, chat, __) {
+                  final skills = AgentPersona.allSkillDefinitions;
+                  final enabled = skills.length; // TODO: per-persona
+                  return FilledButton.tonal(
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => SkillExplorerScreen(
+                          enabledSkills: skills.map((s) => s['id']!).toList(),
+                          onChanged: (updated) {
+                            // TODO: save to persona
+                          },
+                        ),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.extension, size: 18),
+                        const SizedBox(width: 8),
+                        Text('$enabled/${skills.length} ${S.isEnglish ? "skills active" : "Skills aktiv"}'),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.arrow_forward_ios, size: 14),
+                      ],
+                    ),
+                  );
+                },
               ),
             ],
           ),
