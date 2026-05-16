@@ -5,11 +5,20 @@ import 'package:flutter/material.dart';
 import '../models/agent_task.dart';
 import 'file_chip.dart';
 
-class AgentTaskWidget extends StatelessWidget {
+class AgentTaskWidget extends StatefulWidget {
   final AgentTask task;
   final VoidCallback? onRetry;
 
   const AgentTaskWidget({super.key, required this.task, this.onRetry});
+
+  @override
+  State<AgentTaskWidget> createState() => _AgentTaskWidgetState();
+}
+
+class _AgentTaskWidgetState extends State<AgentTaskWidget> {
+  bool _expanded = false;
+
+  AgentTask get task => widget.task;
 
   @override
   Widget build(BuildContext context) {
@@ -18,6 +27,8 @@ class AgentTaskWidget extends StatelessWidget {
       builder: (_, __) => _build(context),
     );
   }
+
+  void _toggleExpanded() => setState(() => _expanded = !_expanded);
 
   Widget _build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -89,36 +100,14 @@ class AgentTaskWidget extends StatelessWidget {
                 ),
               ),
             ),
-            // Steps log
+            // Steps log (tap to expand)
             if (task.steps.isNotEmpty) ...[
               const SizedBox(height: 6),
-              Padding(
-                padding: const EdgeInsets.only(left: 28),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    for (final step in task.steps.reversed.take(3).toList().reversed)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 2),
-                        child: Row(
-                          children: [
-                            Icon(Icons.chevron_right, size: 12, color: colors.outline),
-                            const SizedBox(width: 2),
-                            Expanded(
-                              child: Text(
-                                step,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontFamily: 'monospace',
-                                  color: colors.outline,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                  ],
+              GestureDetector(
+                onTap: _toggleExpanded,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 28),
+                  child: _buildSteps(colors),
                 ),
               ),
             ],
@@ -152,6 +141,51 @@ class AgentTaskWidget extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildSteps(ColorScheme colors) {
+    final stepsToShow = _expanded
+        ? task.steps
+        : task.steps.reversed.take(3).toList().reversed.toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final step in stepsToShow)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.chevron_right, size: 12, color: colors.outline),
+                const SizedBox(width: 2),
+                Expanded(
+                  child: Text(
+                    step,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontFamily: 'monospace',
+                      color: colors.outline,
+                    ),
+                    maxLines: _expanded ? 10 : 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        if (task.steps.length > 3 && !_expanded)
+          Text(
+            '+ ${task.steps.length - 3} more (tap to show all)',
+            style: TextStyle(fontSize: 10, color: colors.primary),
+          ),
+        if (_expanded && task.steps.length > 3)
+          Text(
+            '- tap to collapse',
+            style: TextStyle(fontSize: 10, color: colors.primary),
+          ),
+      ],
     );
   }
 

@@ -1319,10 +1319,42 @@ class SubAgentRunner {
   }
 
   /// Escape a string for use inside a PDF text operator: (text) Tj
-  static String _pdfEsc(String s) => s
-      .replaceAll('\\', '\\\\')
-      .replaceAll('(', '\\(')
-      .replaceAll(')', '\\)');
+  /// Escape string for PDF text operators with WinAnsi encoding.
+  /// Converts German umlauts and special chars to octal codes.
+  static String _pdfEsc(String s) {
+    final buf = StringBuffer();
+    for (final c in s.codeUnits) {
+      switch (c) {
+        case 0x5C: buf.write('\\\\'); // backslash
+        case 0x28: buf.write('\\(');  // (
+        case 0x29: buf.write('\\)');  // )
+        // German umlauts + special chars → WinAnsi octal
+        case 0xE4: buf.write('\\344'); // ä
+        case 0xF6: buf.write('\\366'); // ö
+        case 0xFC: buf.write('\\374'); // ü
+        case 0xC4: buf.write('\\304'); // Ä
+        case 0xD6: buf.write('\\326'); // Ö
+        case 0xDC: buf.write('\\334'); // Ü
+        case 0xDF: buf.write('\\337'); // ß
+        case 0xE9: buf.write('\\351'); // é
+        case 0xE8: buf.write('\\350'); // è
+        case 0xEA: buf.write('\\352'); // ê
+        case 0xE0: buf.write('\\340'); // à
+        case 0xF1: buf.write('\\361'); // ñ
+        default:
+          if (c >= 32 && c <= 126) {
+            buf.writeCharCode(c); // ASCII printable
+          } else if (c >= 128 && c <= 255) {
+            buf.write('\\${c.toRadixString(8).padLeft(3, '0')}'); // WinAnsi octal
+          } else if (c > 255) {
+            buf.write('?'); // Non-WinAnsi: replace with ?
+          } else {
+            buf.writeCharCode(c);
+          }
+      }
+    }
+    return buf.toString();
+  }
 
   String _resolvePath(String path, String workspace) {
     if (p.isAbsolute(path)) return path;
