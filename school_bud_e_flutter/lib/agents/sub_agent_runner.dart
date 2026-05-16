@@ -1341,13 +1341,23 @@ class SubAgentRunner {
         case 0xEA: buf.write('\\352'); // ê
         case 0xE0: buf.write('\\340'); // à
         case 0xF1: buf.write('\\361'); // ñ
+        // Common Unicode → WinAnsi mappings
+        case 0x2013: buf.write('\\226'); // – en-dash
+        case 0x2014: buf.write('\\227'); // — em-dash
+        case 0x2018: buf.write('\\221'); // ' left single quote
+        case 0x2019: buf.write('\\222'); // ' right single quote
+        case 0x201C: buf.write('\\223'); // " left double quote
+        case 0x201D: buf.write('\\224'); // " right double quote
+        case 0x2022: buf.write('\\267'); // • bullet
+        case 0x2026: buf.write('\\205'); // … ellipsis
+        case 0x20AC: buf.write('\\200'); // € euro sign
         default:
           if (c >= 32 && c <= 126) {
             buf.writeCharCode(c); // ASCII printable
           } else if (c >= 128 && c <= 255) {
             buf.write('\\${c.toRadixString(8).padLeft(3, '0')}'); // WinAnsi octal
           } else if (c > 255) {
-            buf.write('?'); // Non-WinAnsi: replace with ?
+            buf.write('-'); // Non-WinAnsi: replace with dash
           } else {
             buf.writeCharCode(c);
           }
