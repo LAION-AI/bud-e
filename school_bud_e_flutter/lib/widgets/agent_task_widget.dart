@@ -61,6 +61,20 @@ class AgentTaskWidget extends StatelessWidget {
                   ),
               ],
             ),
+            // Progress bar for running tasks
+            if (task.status == AgentTaskStatus.running && task.maxSteps > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 6, left: 28, right: 4),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: task.currentStep / task.maxSteps,
+                    minHeight: 4,
+                    backgroundColor: colors.surfaceContainerHighest,
+                    color: colors.primary,
+                  ),
+                ),
+              ),
             // Instruction
             Padding(
               padding: const EdgeInsets.only(top: 4, left: 28),
@@ -143,8 +157,10 @@ class AgentTaskWidget extends StatelessWidget {
 
   Widget _statusIcon(ColorScheme colors) {
     return switch (task.status) {
-      AgentTaskStatus.pending => Icon(Icons.hourglass_empty,
-          size: 20, color: colors.outline),
+      AgentTaskStatus.pending => SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(strokeWidth: 2, color: colors.outline)),
       AgentTaskStatus.running => SizedBox(
           width: 20,
           height: 20,
@@ -181,11 +197,21 @@ class AgentTaskWidget extends StatelessWidget {
   }
 
   String _statusTitle() {
+    if (task.status == AgentTaskStatus.running && task.steps.isNotEmpty) {
+      final lastStep = task.steps.last;
+      // Show a human-readable description of what's happening
+      if (lastStep.contains('web_search')) return 'Searching the web...';
+      if (lastStep.contains('web_scrape')) return 'Reading webpage...';
+      if (lastStep.contains('wikipedia')) return 'Looking up Wikipedia...';
+      if (lastStep.contains('generate_image')) return 'Generating image...';
+      if (lastStep.contains('write_file')) return 'Writing file...';
+      if (lastStep.contains('LLM-Aufruf')) return 'Thinking... (${task.currentStep}/${task.maxSteps})';
+    }
     return switch (task.status) {
-      AgentTaskStatus.pending => 'Agent wird vorbereitet...',
-      AgentTaskStatus.running => 'Agent arbeitet...',
-      AgentTaskStatus.completed => 'Agent fertig',
-      AgentTaskStatus.error => 'Agent-Fehler',
+      AgentTaskStatus.pending => 'Starting agent...',
+      AgentTaskStatus.running => 'Agent working... (${task.currentStep}/${task.maxSteps})',
+      AgentTaskStatus.completed => 'Done',
+      AgentTaskStatus.error => 'Error',
     };
   }
 }

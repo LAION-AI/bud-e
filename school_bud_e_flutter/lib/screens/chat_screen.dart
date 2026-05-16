@@ -315,7 +315,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildWelcome(BuildContext context, ColorScheme colors, String name) {
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(40),
         child: Column(
           mainAxisSize: MainAxisSize.min,
