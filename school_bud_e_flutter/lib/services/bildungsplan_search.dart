@@ -9,6 +9,7 @@ library;
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:path/path.dart' as p;
 import 'debug_log.dart';
 
@@ -89,10 +90,78 @@ class BildungsplanSearch {
   Set<String> get availableFaecher => _pages.map((p) => p.fach).toSet();
   Set<String> get availableSchulformen => _pages.map((p) => p.schulform).toSet();
 
+  /// List of bundled asset JSON files (populated at build time).
+  static const _bundledAssets = [
+    'aufgabengebiete_grundschule_jahrgangsstufen_1_4_hamburg.json',
+    'biologie_gymnasium_sekundarstufe_i_hamburg.json',
+    'biologie_gymnasium_studienstufe_hamburg.json',
+    'chemie_gymnasium_sekundarstufe_i_hamburg.json',
+    'chemie_gymnasium_studienstufe_hamburg.json',
+    'chemie_stadtteilschule_jahrgangsstufen_5_11_hamburg.json',
+    'deutsch_grundschule_jahrgangsstufen_1_4_hamburg.json',
+    'deutsch_gymnasium_studienstufe_hamburg.json',
+    'deutsch_stadtteilschule_jahrgangsstufen_5_11_hamburg.json',
+    'englisch_grundschule_jahrgangsstufen_1_4_hamburg.json',
+    'englisch_gymnasium_sekundarstufe_i_hamburg.json',
+    'englisch_gymnasium_studienstufe_hamburg.json',
+    'geographie_gymnasium_sekundarstufe_i_hamburg.json',
+    'geographie_gymnasium_studienstufe_hamburg.json',
+    'geschichte_gymnasium_sekundarstufe_i_hamburg.json',
+    'gesellschaftswissenschaften_stadtteilschule_jahrgangsstufen_5_11_hamburg.json',
+    'informatik_gymnasium_sekundarstufe_i_hamburg.json',
+    'informatik_gym_sek1_hamburg.json',
+    'informatik_gymnasium_studienstufe_hamburg.json',
+    'mathematik_grundschule_jahrgangsstufen_1_4_hamburg.json',
+    'mathematik_gymnasium_sekundarstufe_i_hamburg.json',
+    'mathematik_gymnasium_studienstufe_hamburg.json',
+    'mathematik_stadtteilschule_jahrgangsstufen_5_11_hamburg.json',
+    'neuere_fremdsprachen_gymnasium_sekundarstufe_i_hamburg.json',
+    'physik_gymnasium_sekundarstufe_i_hamburg.json',
+    'physik_stadtteilschule_jahrgangsstufen_7_11_hamburg.json',
+    'psychologie_gymnasium_studienstufe_hamburg.json',
+    'religion_stadtteilschule_jahrgangsstufen_5_11_hamburg.json',
+    'sachunterricht_grundschule_jahrgangsstufen_1_4_hamburg.json',
+    'sport_gymnasium_sekundarstufe_i_hamburg.json',
+    'sport_gymnasium_studienstufe_hamburg.json',
+    'wirtschaft_stadtteilschule_sekundarstufe_i_hamburg.json',
+  ];
+
+  /// Extract bundled assets to local directory if not yet present.
+  Future<void> _ensureLocalData() async {
+    final dir = Directory(_dataDir);
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+
+    // Check if already extracted
+    final existing = await dir.list()
+        .where((e) => e.path.endsWith('.json'))
+        .length;
+    if (existing >= _bundledAssets.length) return;
+
+    debugLog(DebugSource.memory,
+        'Extracting ${_bundledAssets.length} bundled Bildungsplan indexes...');
+
+    for (final assetName in _bundledAssets) {
+      final targetFile = File(p.join(_dataDir, assetName));
+      if (await targetFile.exists()) continue;
+      try {
+        final data = await rootBundle.loadString('assets/bildungsplaene/$assetName');
+        await targetFile.writeAsString(data, encoding: utf8);
+      } catch (e) {
+        debugLog(DebugSource.memory, 'Failed to extract $assetName: $e');
+      }
+    }
+    debugLog(DebugSource.memory, 'Bildungsplan extraction complete');
+  }
+
   Future<void> buildIndex() async {
     _pages.clear();
     _index.clear();
     _pageLengths.clear();
+
+    // Extract bundled assets if needed (first launch on mobile)
+    await _ensureLocalData();
 
     final dir = Directory(_dataDir);
     if (!await dir.exists()) {
