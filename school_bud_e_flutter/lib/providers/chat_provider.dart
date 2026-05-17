@@ -1534,7 +1534,11 @@ WICHTIG - Bei JEDER Antwort auf Bildungsplan-Fragen MUSST du:
 4. ALLE gefundenen Seiten auflisten, nicht nur die beste
 Beispiel-Antwort: "Auf Seite 27 steht: '...' (https://www.hamburg.de/.../informatik-data.pdf#page=27)"
 
-9. Unteragent — fuer komplexe mehrstufige Aufgaben:
+9. Python-Code ausfuehren (ueber den Unteragenten):
+Der Unteragent kann Python-Code ausfuehren mit [[tool:run_python code="..."]].
+Nutze das wenn der User Code testen, rechnen oder programmieren will.
+
+10. Unteragent — fuer komplexe mehrstufige Aufgaben:
 [[tool:run_agent instruction="Aufgabenbeschreibung"]]
 Der Agent kann: Web-Suche (Brave Search), Webseiten scrapen, Wikipedia, Dateien lesen/schreiben (DOCX/HTML/PDF/PPTX), Bilder generieren und einbetten.
 
