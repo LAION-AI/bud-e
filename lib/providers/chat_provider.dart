@@ -672,6 +672,19 @@ class ChatProvider extends ChangeNotifier {
       final filesStr = agentMatch.group(2) ?? '';
       debugLog(DebugSource.mainAgent, 'Tool: run_agent("$instruction")');
       _spawnSubAgent(instruction, filesStr, assistantMsg);
+
+      // Verify agent started (delayed check)
+      Future.delayed(const Duration(seconds: 2), () {
+        final taskId = assistantMsg.metadata['agentTaskId'] as String?;
+        if (taskId != null) {
+          final task = _agentTasks[taskId];
+          if (task != null && task.status == AgentTaskStatus.pending) {
+            debugLog(DebugSource.agentRegistry,
+                'Agent still pending after 2s, forcing UI update');
+            notifyListeners();
+          }
+        }
+      });
       return true;
     }
 
@@ -1226,7 +1239,18 @@ class ChatProvider extends ChangeNotifier {
 
     // Store task ID in the trigger message metadata
     triggerMsg.metadata['agentTaskId'] = taskId;
+
+    // Listen for status changes to update UI
+    task.addListener(notifyListeners);
+
+    // Notify UI immediately so the agent widget appears
     notifyListeners();
+
+    // Give UI time to render, then verify task is visible
+    Future.delayed(const Duration(milliseconds: 200), notifyListeners);
+
+    debugLog(DebugSource.agentRegistry,
+        'Agent task created: $taskId, instruction: ${instruction.substring(0, (instruction.length).clamp(0, 80))}...');
 
     // Run in background
     final runner = SubAgentRunner(
@@ -1234,9 +1258,6 @@ class ChatProvider extends ChangeNotifier {
       workspacePath: workspacePath,
       imageRegistry: imageRegistry,
     );
-
-    // Listen for status changes to update UI
-    task.addListener(notifyListeners);
 
     runner.run(task).then((_) async {
       debugLog(DebugSource.agentRegistry,
