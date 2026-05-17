@@ -15,32 +15,55 @@ import 'agent_task_widget.dart';
 import 'file_chip.dart';
 
 final _toolBlockPattern = RegExp(r'\[\[.*?\]\]', dotAll: true);
+final _codeBlockPattern = RegExp(r'```(\w*)\n([\s\S]*?)```');
+
+enum _SegmentType { text, toolBlock, codeBlock }
 
 List<_ContentSegment> _parseContent(String content) {
   final segments = <_ContentSegment>[];
-  var lastEnd = 0;
-  for (final match in _toolBlockPattern.allMatches(content)) {
-    if (match.start > lastEnd) {
-      final text = content.substring(lastEnd, match.start).trim();
-      if (text.isNotEmpty) segments.add(_ContentSegment(text, false));
+
+  // First pass: extract code blocks
+  final parts = <({int start, int end, _SegmentType type, String text, String? lang})>[];
+
+  for (final m in _codeBlockPattern.allMatches(content)) {
+    parts.add((start: m.start, end: m.end, type: _SegmentType.codeBlock,
+        text: m.group(2) ?? '', lang: m.group(1)));
+  }
+  for (final m in _toolBlockPattern.allMatches(content)) {
+    final overlaps = parts.any((p) => m.start >= p.start && m.start < p.end);
+    if (!overlaps) {
+      parts.add((start: m.start, end: m.end, type: _SegmentType.toolBlock,
+          text: m.group(0)!, lang: null));
     }
-    segments.add(_ContentSegment(match.group(0)!, true));
-    lastEnd = match.end;
+  }
+  parts.sort((a, b) => a.start.compareTo(b.start));
+
+  var lastEnd = 0;
+  for (final part in parts) {
+    if (part.start > lastEnd) {
+      final text = content.substring(lastEnd, part.start).trim();
+      if (text.isNotEmpty) segments.add(_ContentSegment(text, _SegmentType.text));
+    }
+    segments.add(_ContentSegment(part.text, part.type, lang: part.lang));
+    lastEnd = part.end;
   }
   if (lastEnd < content.length) {
     final text = content.substring(lastEnd).trim();
-    if (text.isNotEmpty) segments.add(_ContentSegment(text, false));
+    if (text.isNotEmpty) segments.add(_ContentSegment(text, _SegmentType.text));
   }
   if (segments.isEmpty && content.isNotEmpty) {
-    segments.add(_ContentSegment(content, false));
+    segments.add(_ContentSegment(content, _SegmentType.text));
   }
   return segments;
 }
 
 class _ContentSegment {
   final String text;
-  final bool isToolBlock;
-  _ContentSegment(this.text, this.isToolBlock);
+  final _SegmentType type;
+  final String? lang;
+  _ContentSegment(this.text, this.type, {this.lang});
+  bool get isToolBlock => type == _SegmentType.toolBlock;
+  bool get isCodeBlock => type == _SegmentType.codeBlock;
 }
 
 class MessageBubble extends StatelessWidget {
@@ -125,6 +148,8 @@ class MessageBubble extends StatelessWidget {
                         content: seg.text,
                         textColor: isUser ? colors.onPrimary : colors.outline,
                       )
+                    else if (seg.isCodeBlock)
+                      _CodeBlock(code: seg.text, language: seg.lang ?? '')
                     else
                       _RichTextWithFiles(
                         text: seg.text,
@@ -851,6 +876,138 @@ class _RichTextWithFiles extends StatelessWidget {
 
     return SelectableText.rich(
       TextSpan(style: baseStyle, children: spans),
+    );
+  }
+}
+
+/// Styled code block with syntax label, copy button, and edit support.
+class _CodeBlock extends StatefulWidget {
+  final String code;
+  final String language;
+  const _CodeBlock({required this.code, required this.language});
+
+  @override
+  State<_CodeBlock> createState() => _CodeBlockState();
+}
+
+class _CodeBlockState extends State<_CodeBlock> {
+  bool _editing = false;
+  late TextEditingController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.code);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final lang = widget.language.isNotEmpty ? widget.language : 'code';
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E2E),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Header: language label + copy + edit buttons
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFF2D2D3F),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+            ),
+            child: Row(
+              children: [
+                Text(lang,
+                    style: const TextStyle(fontSize: 11, color: Color(0xFF8888AA),
+                        fontFamily: 'monospace')),
+                const Spacer(),
+                _MiniButton(
+                  icon: Icons.copy,
+                  label: 'Copy',
+                  onTap: () {
+                    Clipboard.setData(ClipboardData(text: _editing ? _ctrl.text : widget.code));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: const Text('Code copied'),
+                          duration: const Duration(seconds: 1),
+                          behavior: SnackBarBehavior.floating),
+                    );
+                  },
+                ),
+                const SizedBox(width: 8),
+                _MiniButton(
+                  icon: _editing ? Icons.check : Icons.edit,
+                  label: _editing ? 'Done' : 'Edit',
+                  onTap: () => setState(() => _editing = !_editing),
+                ),
+              ],
+            ),
+          ),
+          // Code content
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: _editing
+                ? TextField(
+                    controller: _ctrl,
+                    maxLines: null,
+                    style: const TextStyle(
+                      fontSize: 13, fontFamily: 'monospace',
+                      color: Color(0xFFCDD6F4), height: 1.5,
+                    ),
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  )
+                : SelectableText(
+                    widget.code,
+                    style: const TextStyle(
+                      fontSize: 13, fontFamily: 'monospace',
+                      color: Color(0xFFCDD6F4), height: 1.5,
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MiniButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  const _MiniButton({required this.icon, required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(4),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 13, color: const Color(0xFF8888AA)),
+            const SizedBox(width: 3),
+            Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF8888AA))),
+          ],
+        ),
+      ),
     );
   }
 }

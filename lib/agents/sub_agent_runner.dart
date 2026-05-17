@@ -651,6 +651,42 @@ class SubAgentRunner {
           }
           return 'Datei nicht gefunden: $path';
         }(),
+      'run_python' => () async {
+          final code = args['code'] ?? '';
+          if (code.isEmpty) return 'Error: code is required';
+
+          // Try server-side execution via middleware
+          final url = middlewareUrl(universalApiKey, '/v1/code/execute');
+          if (url == null) {
+            // Fallback: try local Python
+            try {
+              final result = await Process.run('python', ['-c', code],
+                  workingDirectory: workspacePath)
+                  .timeout(const Duration(seconds: 10));
+              return 'Exit: ${result.exitCode}\nStdout:\n${(result.stdout as String).length > 5000 ? (result.stdout as String).substring(0, 5000) : result.stdout}\n'
+                  '${(result.stderr as String).isNotEmpty ? "Stderr:\n${result.stderr}" : ""}';
+            } catch (e) {
+              return 'Python execution failed: $e';
+            }
+          }
+
+          try {
+            final response = await http.post(Uri.parse(url),
+                headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $universalApiKey'},
+                body: jsonEncode({'code': code, 'timeout': 10}),
+            ).timeout(const Duration(seconds: 15));
+
+            if (response.statusCode != 200) return 'Code execution error: HTTP ${response.statusCode}';
+            final json = jsonDecode(response.body) as Map<String, dynamic>;
+            final stdout = json['stdout'] as String? ?? '';
+            final stderr = json['stderr'] as String? ?? '';
+            final exitCode = json['exit_code'] as int? ?? -1;
+            return 'Exit: $exitCode\n${stdout.isNotEmpty ? "Output:\n$stdout" : "(no output)"}'
+                '${stderr.isNotEmpty ? "\nErrors:\n$stderr" : ""}';
+          } catch (e) {
+            return 'Code execution failed: $e';
+          }
+        }(),
       _ => 'Unbekanntes Tool: $name',
     };
   }
@@ -1393,6 +1429,7 @@ TOOLS:
 [[tool:transcribe_audio file_path="audio.wav"]]  (Audio-Datei transkribieren, gibt Text zurueck)
 [[tool:web_search query="Suchbegriffe"]]  (Brave Search - sucht im Web)
 [[tool:web_scrape url="https://example.com"]]  (Text einer Webseite extrahieren)
+[[tool:run_python code="print('Hello World')"]]  (Python-Code ausfuehren, Ergebnis zurueck)
 
 DATEIEN SCHREIBEN - ZWEI FORMATE:
 
@@ -1528,10 +1565,12 @@ REGELN:
 - Wenn FERTIG: antworte mit Endergebnis als Text OHNE [[tool:...]].
 
 WEBSUCHE-REGELN (WICHTIG!):
-- Mache maximal 2-3 web_search Aufrufe pro Recherche (nicht mehr!).
-- Scrape nur die Top 2-3 relevantesten Ergebnisse mit web_scrape.
+- Mache maximal 1-2 web_search Aufrufe pro Recherche.
+- Nach JEDER web_search: Scrape die Top 5 URLs SOFORT parallel mit web_scrape!
+  Also: 5x web_scrape in EINER Antwort (parallel = schneller).
 - Fasse Ergebnisse SCHNELL zusammen - der User wartet!
 - Wenn die ersten Suchergebnisse ausreichen, hoere auf zu suchen.
+- NICHT mehr als 10 web_scrape Aufrufe insgesamt.
 
 ARBEITSVERZEICHNIS: $workspacePath
 DATEIEN: ${task.inputFiles.map((f) => p.basename(f)).join(', ')}

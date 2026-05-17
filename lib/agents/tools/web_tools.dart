@@ -202,7 +202,7 @@ Future<String> toolWebScrape(String url) async {
     final response = await http.get(uri, headers: {
       'User-Agent': 'Mozilla/5.0 (compatible; SchoolBudE/1.0)',
       'Accept': 'text/html,application/xhtml+xml',
-    }).timeout(const Duration(seconds: 20));
+    }).timeout(const Duration(seconds: 5));
 
     if (response.statusCode != 200) return 'Scrape error: HTTP ${response.statusCode}';
 

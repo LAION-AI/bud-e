@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../providers/chat_provider.dart';
 import '../config/api_config.dart';
@@ -87,6 +89,96 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // ---- Persona Export/Import ----
+          _SectionCard(
+            icon: Icons.swap_horiz,
+            title: S.isEnglish ? 'Persona Export / Import' : 'Persona Export / Import',
+            children: [
+              Text(
+                S.isEnglish
+                    ? 'Export or import the complete personality including system prompt, memory, and settings.'
+                    : 'Exportiere oder importiere die komplette Persoenlichkeit inkl. System-Prompt, Memory und Einstellungen.',
+                style: TextStyle(fontSize: 12, color: colors.outline),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: () async {
+                        final chat = context.read<ChatProvider>();
+                        final data = {
+                          'personaName': chat.storage.personaName,
+                          'systemPrompt': chat.storage.systemPrompt,
+                          'defaultLanguage': chat.storage.defaultLanguage,
+                          'personality': chat.storage.personality,
+                          'exportedAt': DateTime.now().toIso8601String(),
+                        };
+                        final json = const JsonEncoder.withIndent('  ').convert(data);
+                        await Clipboard.setData(ClipboardData(text: json));
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(S.isEnglish ? 'Persona exported to clipboard' : 'Persona in Zwischenablage exportiert'),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.upload, size: 18),
+                      label: const Text('Export'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: () async {
+                        final clip = await Clipboard.getData(Clipboard.kTextPlain);
+                        if (clip?.text == null || clip!.text!.isEmpty) return;
+                        try {
+                          final data = jsonDecode(clip.text!) as Map<String, dynamic>;
+                          final chat = context.read<ChatProvider>();
+                          if (data['personaName'] != null) {
+                            await chat.storage.updatePersonality({
+                              'personaName': data['personaName'],
+                            });
+                            _personaNameController.text = data['personaName'];
+                          }
+                          if (data['systemPrompt'] != null) {
+                            await chat.storage.setSystemPrompt(data['systemPrompt']);
+                            _systemPromptController.text = data['systemPrompt'];
+                          }
+                          if (data['defaultLanguage'] != null) {
+                            await chat.storage.setDefaultLanguage(data['defaultLanguage']);
+                            S.setLanguage(data['defaultLanguage']);
+                          }
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(S.isEnglish ? 'Persona imported!' : 'Persona importiert!'),
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                            setState(() {});
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Import error: $e'), behavior: SnackBarBehavior.floating),
+                            );
+                          }
+                        }
+                      },
+                      icon: const Icon(Icons.download, size: 18),
+                      label: const Text('Import'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
           // ---- Personality ----
           _SectionCard(
             icon: Icons.face,
