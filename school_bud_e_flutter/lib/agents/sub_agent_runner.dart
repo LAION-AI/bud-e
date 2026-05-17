@@ -1527,6 +1527,12 @@ REGELN:
 - Nenne den ABSOLUTEN Pfad: $workspacePath/dateiname
 - Wenn FERTIG: antworte mit Endergebnis als Text OHNE [[tool:...]].
 
+WEBSUCHE-REGELN (WICHTIG!):
+- Mache maximal 2-3 web_search Aufrufe pro Recherche (nicht mehr!).
+- Scrape nur die Top 2-3 relevantesten Ergebnisse mit web_scrape.
+- Fasse Ergebnisse SCHNELL zusammen - der User wartet!
+- Wenn die ersten Suchergebnisse ausreichen, hoere auf zu suchen.
+
 ARBEITSVERZEICHNIS: $workspacePath
 DATEIEN: ${task.inputFiles.map((f) => p.basename(f)).join(', ')}
 ${imageRegistry != null && imageRegistry!.images.isNotEmpty ? 'BILDER: ${imageRegistry!.images.map((i) => "${i.id}: ${p.basename(i.filePath)} (${i.source})").join(", ")}' : ''}''';
