@@ -60,6 +60,13 @@ class FileStorageService {
     await _seedDefaults();
   }
 
+  /// Reload settings and personality from disk (after import).
+  Future<void> reload() async {
+    _settings = await _loadJson('settings.json') ?? _defaultSettings();
+    _personality = await _loadJson('personality.json') ?? _defaultPersonality();
+    debugLog(DebugSource.updater, 'Storage reloaded');
+  }
+
   Future<void> _seedDefaults() async {
     final semDir = Directory(p.join(root.path, 'semantic_memory'));
     final userPrefs = File(p.join(semDir.path, 'user_preferences.json'));
