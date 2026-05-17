@@ -1,10 +1,14 @@
 import 'dart:convert';
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 import '../providers/chat_provider.dart';
 import '../config/api_config.dart';
 import '../models/agent_persona.dart';
+import '../services/persona_io.dart';
 import '../utils/app_strings.dart';
 import 'skill_explorer_screen.dart';
 
@@ -48,6 +52,117 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.dispose();
   }
 
+  Future<void> _exportPersonaZip(BuildContext ctx) async {
+    final chat = ctx.read<ChatProvider>();
+    final io = PersonaIO(chat.storage);
+
+    // Show progress
+    ScaffoldMessenger.of(ctx).showSnackBar(
+      SnackBar(
+        content: Text(S.isEnglish ? 'Preparing export...' : 'Export wird vorbereitet...'),
+        duration: const Duration(seconds: 1),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+
+    try {
+      final zipBytes = await io.exportZip();
+      final name = '${chat.storage.personaName.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_')}_persona.zip';
+
+      // Save to a temp file then let user pick where to save
+      final result = await FilePicker.platform.saveFile(
+        dialogTitle: S.isEnglish ? 'Save Persona ZIP' : 'Persona ZIP speichern',
+        fileName: name,
+        type: FileType.custom,
+        allowedExtensions: ['zip'],
+        bytes: zipBytes,
+      );
+
+      if (result != null && mounted) {
+        // On some platforms saveFile with bytes doesn't write, need to write manually
+        if (!result.endsWith('.zip')) return;
+        final f = File(result);
+        if (!await f.exists()) {
+          await f.writeAsBytes(zipBytes);
+        }
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(
+            content: Text(S.isEnglish
+                ? 'Persona exported: ${p.basename(result)} (${(zipBytes.length / 1024).toStringAsFixed(0)} KB)'
+                : 'Persona exportiert: ${p.basename(result)} (${(zipBytes.length / 1024).toStringAsFixed(0)} KB)'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(content: Text('Export error: $e'), behavior: SnackBarBehavior.floating),
+        );
+      }
+    }
+  }
+
+  Future<void> _importPersonaZip(BuildContext ctx) async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        dialogTitle: S.isEnglish ? 'Select Persona ZIP' : 'Persona ZIP auswaehlen',
+        type: FileType.custom,
+        allowedExtensions: ['zip'],
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      final file = result.files.first;
+      final bytes = file.bytes ?? (file.path != null ? await File(file.path!).readAsBytes() : null);
+      if (bytes == null) return;
+
+      // Confirm import
+      if (!mounted) return;
+      final confirm = await showDialog<bool>(
+        context: ctx,
+        builder: (c) => AlertDialog(
+          title: Text(S.isEnglish ? 'Import Persona?' : 'Persona importieren?'),
+          content: Text(S.isEnglish
+              ? 'This will replace your current memories, conversations, and settings with the imported persona. Continue?'
+              : 'Dies ersetzt deine aktuellen Erinnerungen, Konversationen und Einstellungen mit der importierten Persona. Fortfahren?'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c, false), child: Text(S.isEnglish ? 'Cancel' : 'Abbrechen')),
+            FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(S.isEnglish ? 'Import' : 'Importieren')),
+          ],
+        ),
+      );
+
+      if (confirm != true) return;
+
+      final chat = ctx.read<ChatProvider>();
+      final io = PersonaIO(chat.storage);
+      final count = await io.importZip(bytes);
+
+      // Reload personality from imported files
+      await chat.storage.reload();
+      _personaNameController.text = chat.storage.personaName;
+      _systemPromptController.text = chat.storage.systemPrompt;
+      S.setLanguage(chat.storage.defaultLanguage);
+
+      if (mounted) {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(
+            content: Text(S.isEnglish ? '$count files imported!' : '$count Dateien importiert!'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        setState(() {});
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(content: Text('Import error: $e'), behavior: SnackBarBehavior.floating),
+        );
+      }
+    }
+  }
+
   Future<void> _save() async {
     final chat = context.read<ChatProvider>();
     await chat.setUniversalApiKey(_apiKeyController.text.trim());
@@ -89,15 +204,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // ---- Persona Export/Import ----
+          // ---- Persona Export/Import (ZIP) ----
           _SectionCard(
             icon: Icons.swap_horiz,
             title: S.isEnglish ? 'Persona Export / Import' : 'Persona Export / Import',
             children: [
               Text(
                 S.isEnglish
-                    ? 'Export or import the complete personality including system prompt, memory, and settings.'
-                    : 'Exportiere oder importiere die komplette Persoenlichkeit inkl. System-Prompt, Memory und Einstellungen.',
+                    ? 'Export or import the complete persona as a ZIP file.\n'
+                      'Includes: personality, memories, conversations, workspace files, and skills.'
+                    : 'Exportiere oder importiere die komplette Persona als ZIP-Datei.\n'
+                      'Enthaelt: Persoenlichkeit, Erinnerungen, Konversationen, Arbeitsergebnisse und Skills.',
                 style: TextStyle(fontSize: 12, color: colors.outline),
               ),
               const SizedBox(height: 8),
@@ -105,72 +222,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 children: [
                   Expanded(
                     child: FilledButton.tonalIcon(
-                      onPressed: () async {
-                        final chat = context.read<ChatProvider>();
-                        final data = {
-                          'personaName': chat.storage.personaName,
-                          'systemPrompt': chat.storage.systemPrompt,
-                          'defaultLanguage': chat.storage.defaultLanguage,
-                          'personality': chat.storage.personality,
-                          'exportedAt': DateTime.now().toIso8601String(),
-                        };
-                        final json = const JsonEncoder.withIndent('  ').convert(data);
-                        await Clipboard.setData(ClipboardData(text: json));
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(S.isEnglish ? 'Persona exported to clipboard' : 'Persona in Zwischenablage exportiert'),
-                              behavior: SnackBarBehavior.floating,
-                            ),
-                          );
-                        }
-                      },
-                      icon: const Icon(Icons.upload, size: 18),
-                      label: const Text('Export'),
+                      onPressed: () => _exportPersonaZip(context),
+                      icon: const Icon(Icons.upload_file, size: 18),
+                      label: Text(S.isEnglish ? 'Export ZIP' : 'ZIP exportieren'),
                     ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: FilledButton.tonalIcon(
-                      onPressed: () async {
-                        final clip = await Clipboard.getData(Clipboard.kTextPlain);
-                        if (clip?.text == null || clip!.text!.isEmpty) return;
-                        try {
-                          final data = jsonDecode(clip.text!) as Map<String, dynamic>;
-                          final chat = context.read<ChatProvider>();
-                          if (data['personaName'] != null) {
-                            await chat.storage.updatePersonality({
-                              'personaName': data['personaName'],
-                            });
-                            _personaNameController.text = data['personaName'];
-                          }
-                          if (data['systemPrompt'] != null) {
-                            await chat.storage.setSystemPrompt(data['systemPrompt']);
-                            _systemPromptController.text = data['systemPrompt'];
-                          }
-                          if (data['defaultLanguage'] != null) {
-                            await chat.storage.setDefaultLanguage(data['defaultLanguage']);
-                            S.setLanguage(data['defaultLanguage']);
-                          }
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(S.isEnglish ? 'Persona imported!' : 'Persona importiert!'),
-                                behavior: SnackBarBehavior.floating,
-                              ),
-                            );
-                            setState(() {});
-                          }
-                        } catch (e) {
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Import error: $e'), behavior: SnackBarBehavior.floating),
-                            );
-                          }
-                        }
-                      },
+                      onPressed: () => _importPersonaZip(context),
                       icon: const Icon(Icons.download, size: 18),
-                      label: const Text('Import'),
+                      label: Text(S.isEnglish ? 'Import ZIP' : 'ZIP importieren'),
                     ),
                   ),
                 ],
