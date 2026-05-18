@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../models/message.dart';
+import '../models/agent_task.dart';
 import '../providers/chat_provider.dart';
 import '../utils/app_strings.dart';
 import '../widgets/message_bubble.dart';
+import '../widgets/agent_task_widget.dart';
 import '../widgets/chat_input.dart';
 import 'settings_screen.dart';
 import 'debug_screen.dart';
@@ -268,38 +270,7 @@ class _ChatScreenState extends State<ChatScreen> {
           Expanded(
             child: chat.messages.isEmpty
                 ? _buildWelcome(context, colors, greeting)
-                : ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.only(top: 12, bottom: 12),
-                    itemCount: chat.messages.length,
-                    itemBuilder: (_, i) {
-                          final msg = chat.messages[i];
-                          // Find agent task associated with this message
-                          final taskId = msg.metadata['agentTaskId'] as String?;
-                          final task = taskId != null
-                              ? chat.agentTasks[taskId]
-                              : null;
-                          final branchInfo = chat.getBranchInfo(msg.id);
-                          return MessageBubble(
-                            message: msg,
-                            ttsService: chat.ttsServiceForReplay,
-                            universalApiKey: chat.universalApiKey,
-                            agentTask: task,
-                            branchInfo: branchInfo,
-                            onSwitchBranch: branchInfo != null
-                                ? (delta) => chat.switchBranch(msg.id, delta)
-                                : null,
-                            onRegenerate: msg.role == MessageRole.assistant
-                                ? () => chat.regenerateMessage(i)
-                                : null,
-                            onEdit: (_) {
-                              chat.storage.saveConversation(chat.conversation)
-                                  .catchError((_) {});
-                              (context as Element).markNeedsBuild();
-                            },
-                          );
-                        },
-                  ),
+                : _buildMessageList(context, chat, colors),
           ),
           if (chat.isLoading)
             LinearProgressIndicator(
@@ -310,6 +281,56 @@ class _ChatScreenState extends State<ChatScreen> {
           const ChatInput(),
         ],
       ),
+    );
+  }
+
+  Widget _buildMessageList(BuildContext context, ChatProvider chat, ColorScheme colors) {
+    // Find agent tasks that are NOT attached to any visible message
+    final attachedTaskIds = <String>{};
+    for (final msg in chat.messages) {
+      final tid = msg.metadata['agentTaskId'] as String?;
+      if (tid != null) attachedTaskIds.add(tid);
+    }
+    final floatingAgents = chat.agentTasks.entries
+        .where((e) => !attachedTaskIds.contains(e.key) &&
+            (e.value.status == AgentTaskStatus.running ||
+             e.value.status == AgentTaskStatus.pending))
+        .toList();
+
+    final totalItems = chat.messages.length + floatingAgents.length;
+
+    return ListView.builder(
+      controller: _scrollController,
+      padding: const EdgeInsets.only(top: 12, bottom: 12),
+      itemCount: totalItems,
+      itemBuilder: (_, i) {
+        // Regular messages
+        if (i < chat.messages.length) {
+          final msg = chat.messages[i];
+          final taskId = msg.metadata['agentTaskId'] as String?;
+          final task = taskId != null ? chat.agentTasks[taskId] : null;
+          final branchInfo = chat.getBranchInfo(msg.id);
+          return MessageBubble(
+            message: msg,
+            ttsService: chat.ttsServiceForReplay,
+            universalApiKey: chat.universalApiKey,
+            agentTask: task,
+            branchInfo: branchInfo,
+            onSwitchBranch: branchInfo != null
+                ? (delta) => chat.switchBranch(msg.id, delta) : null,
+            onRegenerate: msg.role == MessageRole.assistant
+                ? () => chat.regenerateMessage(i) : null,
+            onEdit: (_) {
+              chat.storage.saveConversation(chat.conversation).catchError((_) {});
+              (context as Element).markNeedsBuild();
+            },
+          );
+        }
+
+        // Floating agent tasks (not attached to any message)
+        final agentEntry = floatingAgents[i - chat.messages.length];
+        return AgentTaskWidget(task: agentEntry.value);
+      },
     );
   }
 

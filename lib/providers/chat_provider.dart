@@ -37,7 +37,7 @@ final _wikiRegex = RegExp(
 final _memorySaveRegex = RegExp(
     r'\[\[tool:memory_save\s+id="([^"]+)"\s+content="([^"]+)"\]\]');
 final _runAgentRegex = RegExp(
-    r'\[\[tool:run_agent\s+instruction="([^"]+)"(?:\s+files="([^"]*)")?\]\]');
+    r'\[\[tool:run_agent\s+instruction="((?:[^"\\]|\\.)*)"\s*(?:files="([^"]*)")?\s*\]\]');
 final _weatherRegex = RegExp(
     r'\[\[tool:weather\s+location="([^"]+)"\]\]');
 final _imageGenRegex = RegExp(
@@ -516,6 +516,22 @@ class ChatProvider extends ChangeNotifier {
         _spawnSubAgent(text, '', assistantMsg);
       }
 
+      // Safety net: if LLM wrote run_agent but regex didn't match, extract manually
+      if (!assistantMsg.content.contains('agentTaskId') &&
+          assistantMsg.content.contains('tool:run_agent') &&
+          _agentTasks.values.every((t) =>
+              t.status == AgentTaskStatus.completed || t.status == AgentTaskStatus.error)) {
+        // Extract instruction from content even with bad escaping
+        final fallbackMatch = RegExp(r'instruction="(.*?)"', dotAll: true)
+            .firstMatch(assistantMsg.content);
+        if (fallbackMatch != null) {
+          final instr = fallbackMatch.group(1)!
+              .replaceAll('\\"', '"').replaceAll('\\n', '\n');
+          debugLog(DebugSource.mainAgent, 'Fallback agent spawn from malformed tool call');
+          _spawnSubAgent(instr, '', assistantMsg);
+        }
+      }
+
       // Safety net: force bildungsplan search if LLM didn't use ANY tool
       if (!assistantMsg.content.contains('[[tool:') &&
           _looksLikeBildungsplanQuery(text)) {
@@ -668,23 +684,32 @@ class ChatProvider extends ChangeNotifier {
 
     // run_agent: spawn sub-agent in background
     if (agentMatch != null) {
-      final instruction = agentMatch.group(1)!;
+      final instruction = agentMatch.group(1)!
+          .replaceAll('\\"', '"').replaceAll('\\n', '\n');
       final filesStr = agentMatch.group(2) ?? '';
-      debugLog(DebugSource.mainAgent, 'Tool: run_agent("$instruction")');
+      debugLog(DebugSource.mainAgent, 'Tool: run_agent("${instruction.substring(0, instruction.length.clamp(0, 80))}...")');
       _spawnSubAgent(instruction, filesStr, assistantMsg);
 
-      // Verify agent started (delayed check)
-      Future.delayed(const Duration(seconds: 2), () {
-        final taskId = assistantMsg.metadata['agentTaskId'] as String?;
-        if (taskId != null) {
+      // Proactive health checks: verify agent is running at 2s, 5s, 10s
+      for (final delay in [2, 5, 10]) {
+        Future.delayed(Duration(seconds: delay), () {
+          final taskId = assistantMsg.metadata['agentTaskId'] as String?;
+          if (taskId == null) return;
           final task = _agentTasks[taskId];
-          if (task != null && task.status == AgentTaskStatus.pending) {
+          if (task == null) {
             debugLog(DebugSource.agentRegistry,
-                'Agent still pending after 2s, forcing UI update');
-            notifyListeners();
+                'Agent task $taskId missing at ${delay}s check — restarting');
+            _spawnSubAgent(instruction, filesStr, assistantMsg);
+            return;
           }
-        }
-      });
+          if (task.status == AgentTaskStatus.pending && delay >= 5) {
+            debugLog(DebugSource.agentRegistry,
+                'Agent still pending at ${delay}s — forcing status update');
+            task.setRunning();
+          }
+          notifyListeners();
+        });
+      }
       return true;
     }
 
