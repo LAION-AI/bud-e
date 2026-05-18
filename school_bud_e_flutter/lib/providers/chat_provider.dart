@@ -1321,21 +1321,32 @@ class ChatProvider extends ChangeNotifier {
         } catch (e) {
           debugLog(DebugSource.agentRegistry, 'Present result failed: $e');
         }
-        // Always ensure generated files appear as clickable chips
-        // Check if the last assistant message already has the files attached
-        final lastMsg = _conversation.messages.isNotEmpty ? _conversation.messages.last : null;
-        if (task.generatedFiles.isNotEmpty &&
-            (lastMsg == null || lastMsg.attachedFiles.isEmpty)) {
+        // Ensure generated files appear as clickable chips on the result message
+        if (task.generatedFiles.isNotEmpty) {
           final uniqueFiles = task.generatedFiles.toSet().toList();
           final docFiles = uniqueFiles.where((f) =>
               f.endsWith('.docx') || f.endsWith('.pdf') || f.endsWith('.pptx') ||
               f.endsWith('.html') || f.endsWith('.rtf') || f.endsWith('.md')).toList();
-          if (docFiles.isNotEmpty && lastMsg != null && lastMsg.role == MessageRole.assistant) {
-            // Attach files to the existing assistant message
-            lastMsg.attachedFiles.addAll(docFiles);
+          if (docFiles.isNotEmpty) {
+            // Find the last non-empty assistant message and attach files
+            for (final msg in _conversation.messages.reversed) {
+              if (msg.role == MessageRole.assistant && msg.content.isNotEmpty) {
+                // Only add files not already attached
+                for (final f in docFiles) {
+                  if (!msg.attachedFiles.contains(f)) msg.attachedFiles.add(f);
+                }
+                break;
+              }
+            }
             notifyListeners();
           }
         }
+
+        // Remove empty assistant messages (failed LLM follow-ups)
+        _conversation.messages.removeWhere((m) =>
+            m.role == MessageRole.assistant && m.content.trim().isEmpty &&
+            m.attachedFiles.isEmpty);
+        notifyListeners();
       } else if (task.status == AgentTaskStatus.error) {
         debugLog(DebugSource.agentRegistry, 'Agent error: ${task.error}');
         final errorMsg = Message.assistant(
