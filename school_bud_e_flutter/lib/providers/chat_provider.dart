@@ -1320,13 +1320,21 @@ class ChatProvider extends ChangeNotifier {
           await _presentAgentResult().timeout(const Duration(seconds: 60));
         } catch (e) {
           debugLog(DebugSource.agentRegistry, 'Present result failed: $e');
-          // Still show the result even if presentation fails
-          final fallback = Message.assistant(
-            'Der Agent hat die Aufgabe erledigt.${task.generatedFiles.isNotEmpty
-                ? '\n\nDateien:\n${task.generatedFiles.map((f) => '- $f').join('\n')}'
-                : ''}');
-          _conversation.addMessage(fallback);
-          notifyListeners();
+        }
+        // Always ensure generated files appear as clickable chips
+        // Check if the last assistant message already has the files attached
+        final lastMsg = _conversation.messages.isNotEmpty ? _conversation.messages.last : null;
+        if (task.generatedFiles.isNotEmpty &&
+            (lastMsg == null || lastMsg.attachedFiles.isEmpty)) {
+          final uniqueFiles = task.generatedFiles.toSet().toList();
+          final docFiles = uniqueFiles.where((f) =>
+              f.endsWith('.docx') || f.endsWith('.pdf') || f.endsWith('.pptx') ||
+              f.endsWith('.html') || f.endsWith('.rtf') || f.endsWith('.md')).toList();
+          if (docFiles.isNotEmpty && lastMsg != null && lastMsg.role == MessageRole.assistant) {
+            // Attach files to the existing assistant message
+            lastMsg.attachedFiles.addAll(docFiles);
+            notifyListeners();
+          }
         }
       } else if (task.status == AgentTaskStatus.error) {
         debugLog(DebugSource.agentRegistry, 'Agent error: ${task.error}');

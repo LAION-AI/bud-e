@@ -75,7 +75,10 @@ class SubAgentRunner {
     try {
       for (var step = 0; step < task.maxSteps; step++) {
         debugLog(DebugSource.agentRegistry, 'Sub-agent step ${step + 1}/${task.maxSteps}');
-        task.addStep('Schritt ${step + 1}: LLM-Aufruf...');
+        final stepLabel = step == 0 ? 'Analyzing task...'
+            : task.generatedFiles.isEmpty ? 'Working... (${step + 1}/${task.maxSteps})'
+            : 'Finalizing... (${step + 1}/${task.maxSteps})';
+        task.addStep(stepLabel);
 
         String? content;
         try {
