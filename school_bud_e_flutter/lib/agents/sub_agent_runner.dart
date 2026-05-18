@@ -361,12 +361,18 @@ class SubAgentRunner {
                 imageRegistry!.images.any((img) => content.contains(img.id));
             final imgCount = imageRegistry?.images.length ?? 0;
 
-            // Warn once if images exist but aren't referenced, but don't block
+            // Block writing PPTX without images on first attempt
+            if (imgCount == 0 && !task.generatedFiles.any((f) => f.endsWith('.pptx'))) {
+              return 'STOPP: Du hast noch KEINE Bilder generiert! '
+                  'Generiere ZUERST Bilder mit generate_image (aspect="square") fuer jede Folie, '
+                  'DANN schreibe die PPTX mit den IMG_IDs im Content. '
+                  'Ohne Bilder sieht die Praesentation nicht gut aus!';
+            }
+            // Warn if images exist but aren't referenced
             if (!hasImgRefs && imgCount > 0 && !task.generatedFiles.any((f) => f.endsWith('.pptx'))) {
               return 'HINWEIS: Du hast $imgCount Bilder generiert aber keine IMG_IDs im Content. '
                   'Fuege die IMG_IDs (${imageRegistry!.images.map((i) => i.id).take(3).join(", ")}) '
-                  'unter den Folientiteln ein, damit die Bilder eingebettet werden. '
-                  'Oder schreibe die PPTX ohne Bilder wenn noetig.';
+                  'unter den Folientiteln ein. Format: # Titel\\n- Punkt 1\\nIMG_xxxxx';
             }
 
             var resolved = p.isAbsolute(filePath) ? filePath : p.join(workspacePath, filePath);
