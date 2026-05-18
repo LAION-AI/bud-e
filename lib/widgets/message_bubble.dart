@@ -142,6 +142,18 @@ class MessageBubble extends StatelessWidget {
                   for (final af in message.attachedFiles)
                     if (_isAudioFile(af))
                       _InlineAudioPlayer(filePath: af),
+                  // Document file chips (clickable)
+                  if (message.attachedFiles.any((f) => _isDocFile(f)))
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6, bottom: 4),
+                      child: Wrap(
+                        spacing: 6, runSpacing: 4,
+                        children: [
+                          for (final af in message.attachedFiles)
+                            if (_isDocFile(af)) FileChip(filePath: af),
+                        ],
+                      ),
+                    ),
                   for (final seg in segments)
                     if (seg.isToolBlock)
                       _CollapsibleToolBlock(
@@ -615,6 +627,12 @@ class _InlineImage extends StatelessWidget {
 bool _isAudioFile(String path) {
   final ext = p.extension(path).toLowerCase();
   return {'.wav', '.mp3', '.ogg', '.m4a', '.flac', '.aac'}.contains(ext);
+}
+
+bool _isDocFile(String path) {
+  final ext = p.extension(path).toLowerCase();
+  return {'.docx', '.doc', '.pdf', '.pptx', '.ppt', '.html', '.htm',
+      '.rtf', '.md', '.txt', '.csv', '.xlsx'}.contains(ext);
 }
 
 /// Inline audio player with play/pause, seek bar, and duration.
