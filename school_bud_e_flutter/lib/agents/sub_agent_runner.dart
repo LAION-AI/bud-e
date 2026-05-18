@@ -297,7 +297,7 @@ class SubAgentRunner {
       'read_file' => toolReadFile(args['path'] ?? '', workspacePath),
       'write_file' => () async {
           var filePath = args['path'] ?? 'output.txt';
-          final content = args['content'] ?? '';
+          var content = args['content'] ?? '';
           final ext = p.extension(filePath).toLowerCase();
 
           // For .html: auto-embed image references as base64
@@ -400,6 +400,23 @@ class SubAgentRunner {
             final docxPath = filePath.endsWith('.doc')
                 ? filePath.replaceAll('.doc', '.docx') : filePath;
             final resolved = p.isAbsolute(docxPath) ? docxPath : p.join(workspacePath, docxPath);
+            // Safety: strip HTML tags if LLM wrote HTML instead of Markdown
+            if (content.contains('<div') || content.contains('<h1') || content.contains('<br')) {
+              content = content
+                  .replaceAll(RegExp(r'<br\s*/?>'), '\n')
+                  .replaceAll(RegExp(r'<hr[^>]*>'), '\n---\n')
+                  .replaceAll(RegExp(r'<h1[^>]*>(.*?)</h1>', caseSensitive: false), '# \$1')
+                  .replaceAll(RegExp(r'<h2[^>]*>(.*?)</h2>', caseSensitive: false), '## \$1')
+                  .replaceAll(RegExp(r'<h3[^>]*>(.*?)</h3>', caseSensitive: false), '### \$1')
+                  .replaceAll(RegExp(r'<b>(.*?)</b>', caseSensitive: false), '**\$1**')
+                  .replaceAll(RegExp(r'<strong>(.*?)</strong>', caseSensitive: false), '**\$1**')
+                  .replaceAll(RegExp(r'<i>(.*?)</i>', caseSensitive: false), '*\$1*')
+                  .replaceAll(RegExp(r'<em>(.*?)</em>', caseSensitive: false), '*\$1*')
+                  .replaceAll(RegExp(r'<[^>]+>'), '') // strip remaining tags
+                  .replaceAll('&amp;', '&')
+                  .replaceAll('&lt;', '<').replaceAll('&gt;', '>')
+                  .replaceAll('&nbsp;', ' ');
+            }
             // Build image map from registry
             Map<String, String>? imgMap;
             if (imageRegistry != null && imageRegistry!.images.isNotEmpty) {
@@ -1468,7 +1485,10 @@ write_file erzeugt automatisch das richtige Format je nach Dateiendung:
 - .pdf = PDF-Datei (Helvetica, sauberes Layout)
 - .html = HTML-Datei
 - .md = Markdown
-Schreibe den Inhalt immer als Markdown (# Ueberschrift, **fett**, - Liste).
+WICHTIG: Fuer .docx und .pdf Dateien schreibe den Inhalt IMMER als Markdown:
+  # Ueberschrift, ## Unterueberschrift, **fett**, *kursiv*, - Liste
+  NIEMALS HTML-Tags in .docx oder .pdf Dateien verwenden!
+  HTML-Tags (<div>, <br>, <h1> etc.) nur in .html Dateien!
 Wenn der Nutzer ein bestimmtes Format verlangt (HTML, PDF, etc.) benutze das!
 Sonst benutze .docx als Standard.
 
