@@ -401,21 +401,26 @@ class SubAgentRunner {
                 ? filePath.replaceAll('.doc', '.docx') : filePath;
             final resolved = p.isAbsolute(docxPath) ? docxPath : p.join(workspacePath, docxPath);
             // Safety: strip HTML tags if LLM wrote HTML instead of Markdown
-            if (content.contains('<div') || content.contains('<h1') || content.contains('<br')) {
+            if (RegExp(r'<(div|h[1-6]|br|hr|p |span|style|table|ul|ol|li|img|a )', caseSensitive: false).hasMatch(content)) {
               content = content
                   .replaceAll(RegExp(r'<br\s*/?>'), '\n')
                   .replaceAll(RegExp(r'<hr[^>]*>'), '\n---\n')
-                  .replaceAll(RegExp(r'<h1[^>]*>(.*?)</h1>', caseSensitive: false), '# \$1')
-                  .replaceAll(RegExp(r'<h2[^>]*>(.*?)</h2>', caseSensitive: false), '## \$1')
-                  .replaceAll(RegExp(r'<h3[^>]*>(.*?)</h3>', caseSensitive: false), '### \$1')
-                  .replaceAll(RegExp(r'<b>(.*?)</b>', caseSensitive: false), '**\$1**')
-                  .replaceAll(RegExp(r'<strong>(.*?)</strong>', caseSensitive: false), '**\$1**')
-                  .replaceAll(RegExp(r'<i>(.*?)</i>', caseSensitive: false), '*\$1*')
-                  .replaceAll(RegExp(r'<em>(.*?)</em>', caseSensitive: false), '*\$1*')
+                  .replaceAll(RegExp(r'<h1[^>]*>(.*?)</h1>', caseSensitive: false, dotAll: true), '# \$1\n')
+                  .replaceAll(RegExp(r'<h2[^>]*>(.*?)</h2>', caseSensitive: false, dotAll: true), '## \$1\n')
+                  .replaceAll(RegExp(r'<h3[^>]*>(.*?)</h3>', caseSensitive: false, dotAll: true), '### \$1\n')
+                  .replaceAll(RegExp(r'<h4[^>]*>(.*?)</h4>', caseSensitive: false, dotAll: true), '#### \$1\n')
+                  .replaceAll(RegExp(r'<b[^>]*>(.*?)</b>', caseSensitive: false, dotAll: true), '**\$1**')
+                  .replaceAll(RegExp(r'<strong[^>]*>(.*?)</strong>', caseSensitive: false, dotAll: true), '**\$1**')
+                  .replaceAll(RegExp(r'<i[^>]*>(.*?)</i>', caseSensitive: false, dotAll: true), '*\$1*')
+                  .replaceAll(RegExp(r'<em[^>]*>(.*?)</em>', caseSensitive: false, dotAll: true), '*\$1*')
+                  .replaceAll(RegExp(r'<li[^>]*>(.*?)</li>', caseSensitive: false, dotAll: true), '- \$1\n')
+                  .replaceAll(RegExp(r'<p[^>]*>(.*?)</p>', caseSensitive: false, dotAll: true), '\$1\n\n')
+                  .replaceAll(RegExp(r'<style[^>]*>.*?</style>', caseSensitive: false, dotAll: true), '')
                   .replaceAll(RegExp(r'<[^>]+>'), '') // strip remaining tags
                   .replaceAll('&amp;', '&')
-                  .replaceAll('&lt;', '<').replaceAll('&gt;', '>')
-                  .replaceAll('&nbsp;', ' ');
+                  .replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&quot;', '"')
+                  .replaceAll('&#39;', "'").replaceAll('&nbsp;', ' ')
+                  .replaceAll(RegExp(r'\n{3,}'), '\n\n'); // collapse excessive newlines
             }
             // Build image map from registry
             Map<String, String>? imgMap;
