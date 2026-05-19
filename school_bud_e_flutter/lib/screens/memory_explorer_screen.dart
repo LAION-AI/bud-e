@@ -330,9 +330,7 @@ class _MemoryExplorerScreenState extends State<MemoryExplorerScreen> {
               subtitle: const Text('WhatsApp, Email, Drive, etc.'),
               onTap: () async {
                 Navigator.pop(c);
-                await SharePlus.instance.share(
-                  ShareParams(files: [XFile(fullPath)]),
-                );
+                await Share.shareXFiles([XFile(fullPath)]);
               },
             ),
             ListTile(

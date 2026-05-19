@@ -88,9 +88,7 @@ class FileChip extends StatelessWidget {
               subtitle: const Text('WhatsApp, Email, Drive, etc.'),
               onTap: () async {
                 Navigator.pop(ctx);
-                await SharePlus.instance.share(
-                  ShareParams(files: [XFile(filePath)]),
-                );
+                await Share.shareXFiles([XFile(filePath)]);
               },
             ),
             ListTile(
