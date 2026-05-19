@@ -66,6 +66,7 @@ class SubAgentRunner {
     if (!await wsDir.exists()) await wsDir.create(recursive: true);
 
     var qcRetries = 0; // Limit QC feedback loops
+    var fileRetries = 0; // Limit "no files" retries
 
     final messages = <Map<String, dynamic>>[
       {'role': 'system', 'content': _systemPrompt(task)},
@@ -142,16 +143,18 @@ class SubAgentRunner {
               instrLow.contains('präsentation') || instrLow.contains('powerpoint') ||
               instrLow.contains('.docx') || instrLow.contains('.html') ||
               instrLow.contains('.pdf') || instrLow.contains('datei');
-          if (expectsFile && task.generatedFiles.isEmpty && step < task.maxSteps - 3) {
-            task.addStep('Keine Dateien erstellt - Nacharbeit...');
-            debugLog(DebugSource.agentRegistry, 'No files generated but task expects files');
+          if (expectsFile && task.generatedFiles.isEmpty && step < task.maxSteps - 3 && fileRetries < 2) {
+            fileRetries++;
+            task.addStep('Keine Dateien erstellt - Nacharbeit ($fileRetries/2)...');
+            debugLog(DebugSource.agentRegistry, 'No files generated, retry $fileRetries/2');
             messages.add({'role': 'assistant', 'content': content});
             messages.add({
               'role': 'user',
               'content': '[[tool_result]]\nFEHLER: Du hast KEINE Dateien erstellt!\n'
-                  'Die Aufgabe verlangt eine Datei. Erstelle sie JETZT mit write_file.\n'
-                  '[[/tool_result]]\n\n'
-                  'Erstelle die Datei jetzt! Benutze write_file mit dem richtigen Format.',
+                  'Benutze write_file mit path="dateiname.pptx" oder path="dateiname.docx".\n'
+                  'Schreibe den Inhalt als Markdown (# Titel, - Stichpunkte, IMG_xxx fuer Bilder).\n'
+                  'Speichere im Arbeitsverzeichnis: $workspacePath/\n'
+                  '[[/tool_result]]',
             });
             continue;
           }
@@ -1597,6 +1600,12 @@ REGELN:
 - VERIFIZIERE am Ende mit list_files dass Dateien existieren.
 - Nenne den ABSOLUTEN Pfad: $workspacePath/dateiname
 - Wenn FERTIG: antworte mit Endergebnis als Text OHNE [[tool:...]].
+- ERFINDE NIEMALS Bild-IDs! Bild-IDs kommen NUR von generate_image Ergebnissen (z.B. IMG_a7x3kp).
+  Schreibe KEINE Zahlen als IMG_IDs (z.B. IMG_123456 ist FALSCH).
+  Benutze KEIN get_image_path ausser du hast eine echte ID von generate_image bekommen.
+- Benutze NIEMALS python-pptx oder andere Python-Bibliotheken! write_file erstellt PPTX automatisch.
+- Speichere ALLE Dateien im Arbeitsverzeichnis: $workspacePath/
+  Benutze NIEMALS /tmp/ oder andere Verzeichnisse!
 
 WEBSUCHE-REGELN (WICHTIG!):
 - Mache maximal 1-2 web_search Aufrufe pro Recherche.
