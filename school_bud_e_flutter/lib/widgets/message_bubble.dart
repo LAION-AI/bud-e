@@ -836,7 +836,7 @@ class _RichTextWithFiles extends StatelessWidget {
     }
 
     if (matches.isEmpty) {
-      return SelectableText(text, style: baseStyle);
+      return SelectableText.rich(_buildMarkdownSpans(text, baseStyle));
     }
 
     matches.sort((a, b) => a.start.compareTo(b.start));
@@ -846,9 +846,9 @@ class _RichTextWithFiles extends StatelessWidget {
     var lastEnd = 0;
 
     for (final match in matches) {
-      // Text before this match
+      // Text before this match (with markdown formatting)
       if (match.start > lastEnd) {
-        spans.add(TextSpan(text: text.substring(lastEnd, match.start)));
+        spans.addAll(_buildMarkdownSpans(text.substring(lastEnd, match.start), baseStyle).children ?? [TextSpan(text: text.substring(lastEnd, match.start))]);
       }
 
       if (match.type == 'path') {
@@ -887,14 +887,49 @@ class _RichTextWithFiles extends StatelessWidget {
       lastEnd = match.end;
     }
 
-    // Text after last match
+    // Text after last match (with markdown formatting)
     if (lastEnd < text.length) {
-      spans.add(TextSpan(text: text.substring(lastEnd)));
+      spans.addAll(_buildMarkdownSpans(text.substring(lastEnd), baseStyle).children ?? [TextSpan(text: text.substring(lastEnd))]);
     }
 
     return SelectableText.rich(
       TextSpan(style: baseStyle, children: spans),
     );
+  }
+
+  /// Parse **bold** and *italic* markdown into styled TextSpans.
+  static TextSpan _buildMarkdownSpans(String text, TextStyle baseStyle) {
+    final children = <InlineSpan>[];
+    // Match **bold** and *italic* patterns
+    final mdRegex = RegExp(r'\*\*(.+?)\*\*|\*(.+?)\*');
+    var lastEnd = 0;
+
+    for (final m in mdRegex.allMatches(text)) {
+      if (m.start > lastEnd) {
+        children.add(TextSpan(text: text.substring(lastEnd, m.start)));
+      }
+      if (m.group(1) != null) {
+        // **bold**
+        children.add(TextSpan(
+          text: m.group(1),
+          style: baseStyle.copyWith(fontWeight: FontWeight.bold),
+        ));
+      } else if (m.group(2) != null) {
+        // *italic*
+        children.add(TextSpan(
+          text: m.group(2),
+          style: baseStyle.copyWith(fontStyle: FontStyle.italic),
+        ));
+      }
+      lastEnd = m.end;
+    }
+    if (lastEnd < text.length) {
+      children.add(TextSpan(text: text.substring(lastEnd)));
+    }
+    if (children.isEmpty) {
+      children.add(TextSpan(text: text));
+    }
+    return TextSpan(style: baseStyle, children: children);
   }
 }
 

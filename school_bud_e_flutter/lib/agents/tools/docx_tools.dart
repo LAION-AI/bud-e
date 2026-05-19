@@ -62,11 +62,16 @@ String _mdToOoxml(String md, {List<String>? imageRefs, Map<String, List<int>>? i
   final buf = StringBuffer();
   for (final line in md.split('\n')) {
     final t = line.trim();
-    // Check for image placeholder
+    // Check for image placeholder (entire line or inline)
     final imgMatch = RegExp(r'<<IMAGE:(rImg\d+)>>').firstMatch(t);
     if (imgMatch != null) {
       final rId = imgMatch.group(1)!;
+      // If there's text before/after the image, render it too
+      final before = t.substring(0, imgMatch.start).trim();
+      final after = t.substring(imgMatch.end).trim();
+      if (before.isNotEmpty) buf.write(_p(before));
       buf.write(_imageBlock(rId, imageBytes: imageBytesMap?[rId]));
+      if (after.isNotEmpty) buf.write(_p(after));
       continue;
     }
     if (t.isEmpty) {
