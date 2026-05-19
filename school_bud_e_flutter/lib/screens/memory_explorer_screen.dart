@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../providers/chat_provider.dart';
 import '../widgets/file_chip.dart';
 
@@ -320,6 +321,17 @@ class _MemoryExplorerScreenState extends State<MemoryExplorerScreen> {
                 Clipboard.setData(ClipboardData(text: fullPath));
                 ScaffoldMessenger.of(ctx).showSnackBar(
                   const SnackBar(content: Text('Path copied'), behavior: SnackBarBehavior.floating),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.share),
+              title: const Text('Share via...'),
+              subtitle: const Text('WhatsApp, Email, Drive, etc.'),
+              onTap: () async {
+                Navigator.pop(c);
+                await SharePlus.instance.share(
+                  ShareParams(files: [XFile(fullPath)]),
                 );
               },
             ),

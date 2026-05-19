@@ -880,6 +880,26 @@ class SubAgentRunner {
     addObj(pagesId, utf8.encode('<</Type/Pages/Kids[$kids]/Count ${pages.length}>>'));
     addObj(catalogId, utf8.encode('<</Type/Catalog/Pages $pagesId 0 R>>'));
 
+    // Helper: wrap long text into lines that fit page width
+    // ~85 chars at 10pt Helvetica fits within 495pt (595 - 50 left - 50 right margin)
+    List<String> wrapText(String text, int maxChars) {
+      if (text.length <= maxChars) return [text];
+      final words = text.split(' ');
+      final lines = <String>[];
+      var current = StringBuffer();
+      for (final word in words) {
+        if (current.length + word.length + 1 > maxChars && current.isNotEmpty) {
+          lines.add(current.toString());
+          current = StringBuffer(word);
+        } else {
+          if (current.isNotEmpty) current.write(' ');
+          current.write(word);
+        }
+      }
+      if (current.isNotEmpty) lines.add(current.toString());
+      return lines;
+    }
+
     for (var pi = 0; pi < pages.length; pi++) {
       final lines = pages[pi];
       final stream = StringBuffer();
@@ -887,26 +907,42 @@ class SubAgentRunner {
       for (final line in lines) {
         if (y < 50) break;
         final stripped = line.replaceAll('*', '').replaceAll('#', '').trim();
-        final safe = _pdfEsc(stripped);
 
         if (line.trimLeft().startsWith('# ') && !line.trimLeft().startsWith('## ')) {
-          stream.write('BT /F2 16 Tf 1 0 0 1 50 $y Tm ($safe) Tj ET\n');
-          y -= 24;
+          for (final wl in wrapText(stripped, 55)) {
+            if (y < 50) break;
+            stream.write('BT /F2 16 Tf 1 0 0 1 50 $y Tm (${_pdfEsc(wl)}) Tj ET\n');
+            y -= 22;
+          }
+          y -= 4;
         } else if (line.trimLeft().startsWith('## ')) {
-          stream.write('BT /F2 13 Tf 1 0 0 1 50 $y Tm ($safe) Tj ET\n');
-          y -= 20;
+          for (final wl in wrapText(stripped, 65)) {
+            if (y < 50) break;
+            stream.write('BT /F2 13 Tf 1 0 0 1 50 $y Tm (${_pdfEsc(wl)}) Tj ET\n');
+            y -= 18;
+          }
+          y -= 2;
         } else if (line.trimLeft().startsWith('### ')) {
-          stream.write('BT /F2 11 Tf 1 0 0 1 50 $y Tm ($safe) Tj ET\n');
-          y -= 18;
+          stream.write('BT /F2 11 Tf 1 0 0 1 50 $y Tm (${_pdfEsc(stripped)}) Tj ET\n');
+          y -= 16;
         } else if (line.trim().isEmpty) {
           y -= 8;
         } else if (line.trimLeft().startsWith('- ') || line.trimLeft().startsWith('* ')) {
-          final bullet = _pdfEsc(stripped.substring(stripped.startsWith('- ') ? 2 : 0));
-          stream.write('BT /F1 10 Tf 1 0 0 1 65 $y Tm (\\267 $bullet) Tj ET\n');
-          y -= 14;
+          final bulletText = stripped.startsWith('- ') ? stripped.substring(2) : stripped;
+          for (var j = 0; j < wrapText(bulletText, 80).length; j++) {
+            if (y < 50) break;
+            final wl = wrapText(bulletText, 80)[j];
+            final prefix = j == 0 ? '\\267 ' : '  ';
+            final x = j == 0 ? 65 : 75;
+            stream.write('BT /F1 10 Tf 1 0 0 1 $x $y Tm ($prefix${_pdfEsc(wl)}) Tj ET\n');
+            y -= 14;
+          }
         } else {
-          stream.write('BT /F1 10 Tf 1 0 0 1 50 $y Tm (${_pdfEsc(line)}) Tj ET\n');
-          y -= 14;
+          for (final wl in wrapText(line, 85)) {
+            if (y < 50) break;
+            stream.write('BT /F1 10 Tf 1 0 0 1 50 $y Tm (${_pdfEsc(wl)}) Tj ET\n');
+            y -= 14;
+          }
         }
       }
       final streamBytes = utf8.encode(stream.toString());

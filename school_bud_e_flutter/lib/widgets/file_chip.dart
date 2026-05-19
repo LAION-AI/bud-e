@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path/path.dart' as p;
-import 'package:url_launcher/url_launcher.dart';
+import 'package:share_plus/share_plus.dart';
 
 class FileChip extends StatelessWidget {
   final String filePath;
@@ -84,23 +84,13 @@ class FileChip extends StatelessWidget {
             ),
             ListTile(
               leading: const Icon(Icons.share),
-              title: const Text('Share'),
+              title: const Text('Share via...'),
+              subtitle: const Text('WhatsApp, Email, Drive, etc.'),
               onTap: () async {
                 Navigator.pop(ctx);
-                // Use Android share intent via platform channel
-                try {
-                  final uri = Uri.parse(filePath);
-                  await launchUrl(uri, mode: LaunchMode.externalApplication);
-                } catch (_) {
-                  // Fallback: copy path
-                  Clipboard.setData(ClipboardData(text: filePath));
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Path copied (sharing not available)'),
-                          behavior: SnackBarBehavior.floating),
-                    );
-                  }
-                }
+                await SharePlus.instance.share(
+                  ShareParams(files: [XFile(filePath)]),
+                );
               },
             ),
             ListTile(
