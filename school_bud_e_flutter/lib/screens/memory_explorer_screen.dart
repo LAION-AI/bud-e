@@ -1,9 +1,11 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:open_filex/open_filex.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 import '../providers/chat_provider.dart';
+import '../widgets/file_chip.dart';
 
 class MemoryExplorerScreen extends StatefulWidget {
   const MemoryExplorerScreen({super.key});
@@ -207,10 +209,14 @@ class _MemoryExplorerScreenState extends State<MemoryExplorerScreen> {
           onTap: () {
             if (isDir) {
               _loadDir(relPath);
+            } else if (_isBinaryFile(name)) {
+              // Binary files: open with system app
+              OpenFilex.open(entity.path);
             } else {
               _loadFile(relPath);
             }
           },
+          onLongPress: isDir ? null : () => _showFileActions(context, entity.path, name),
         );
       },
     );
@@ -278,10 +284,81 @@ class _MemoryExplorerScreenState extends State<MemoryExplorerScreen> {
     );
   }
 
+  bool _isBinaryFile(String name) {
+    final ext = p.extension(name).toLowerCase();
+    return {'.pptx', '.ppt', '.docx', '.doc', '.pdf', '.xlsx', '.xls',
+        '.png', '.jpg', '.jpeg', '.gif', '.webp', '.mp3', '.wav',
+        '.ogg', '.m4a', '.zip', '.apk'}.contains(ext);
+  }
+
+  void _showFileActions(BuildContext ctx, String fullPath, String name) {
+    final colors = Theme.of(ctx).colorScheme;
+    showModalBottomSheet(
+      context: ctx,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (c) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(name, style: TextStyle(fontWeight: FontWeight.w600, color: colors.onSurface)),
+            ),
+            ListTile(
+              leading: const Icon(Icons.open_in_new),
+              title: const Text('Open with system app'),
+              onTap: () { Navigator.pop(c); OpenFilex.open(fullPath); },
+            ),
+            ListTile(
+              leading: const Icon(Icons.copy),
+              title: const Text('Copy file path'),
+              subtitle: Text(fullPath, style: const TextStyle(fontSize: 10)),
+              onTap: () {
+                Navigator.pop(c);
+                Clipboard.setData(ClipboardData(text: fullPath));
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(content: Text('Path copied'), behavior: SnackBarBehavior.floating),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.folder_open),
+              title: const Text('Open containing folder'),
+              onTap: () { Navigator.pop(c); OpenFilex.open(p.dirname(fullPath)); },
+            ),
+            if (!_isBinaryFile(name))
+              ListTile(
+                leading: const Icon(Icons.visibility),
+                title: const Text('View content'),
+                onTap: () {
+                  Navigator.pop(c);
+                  final rootPath = context.read<ChatProvider>().storage.rootPath;
+                  _loadFile(p.relative(fullPath, from: rootPath));
+                },
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
   IconData _iconForFile(String name) {
-    if (name.endsWith('.json')) return Icons.data_object;
-    if (name.endsWith('.txt')) return Icons.text_snippet;
-    return Icons.insert_drive_file;
+    final ext = p.extension(name).toLowerCase();
+    return switch (ext) {
+      '.json' => Icons.data_object,
+      '.txt' || '.log' => Icons.text_snippet,
+      '.pdf' => Icons.picture_as_pdf,
+      '.docx' || '.doc' => Icons.description,
+      '.pptx' || '.ppt' => Icons.slideshow,
+      '.html' || '.htm' => Icons.language,
+      '.png' || '.jpg' || '.jpeg' || '.gif' || '.webp' => Icons.image,
+      '.mp3' || '.wav' || '.ogg' || '.m4a' => Icons.audiotrack,
+      '.md' => Icons.article,
+      _ => Icons.insert_drive_file,
+    };
   }
 
   String _formatSize(int bytes) {
