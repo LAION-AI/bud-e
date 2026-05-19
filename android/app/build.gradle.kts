@@ -8,7 +8,7 @@ plugins {
 android {
     namespace = "ai.laion.school_bud_e_flutter"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    ndkVersion = "27.0.12077973"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
