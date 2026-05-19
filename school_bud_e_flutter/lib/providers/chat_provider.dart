@@ -48,6 +48,8 @@ final _bildungsplanRegex = RegExp(
     r'\[\[tool:bildungsplan_search\s+query="([^"]+)"(?:\s+fach="([^"]*)")?(?:\s+schulform="([^"]*)")?\]\]');
 final _newsRegex = RegExp(
     r'\[\[tool:news(?:\s+topic="([^"]*)")?\]\]');
+final _runPythonRegex = RegExp(
+    r'\[\[tool:run_python\s+code="((?:[^"\\]|\\.)*)"\]\]');
 
 /// Matches any [[...]] block for TTS stripping.
 final _toolBlockRegex = RegExp(r'\[\[.*?\]\]', dotAll: true);
@@ -641,6 +643,7 @@ class ChatProvider extends ChangeNotifier {
     final imageMatch = _imageGenRegex.firstMatch(assistantMsg.content);
     final musicMatch = _musicGenRegex.firstMatch(assistantMsg.content);
     final bildungsplanMatch = _bildungsplanRegex.firstMatch(assistantMsg.content);
+    final pythonMatch = _runPythonRegex.firstMatch(assistantMsg.content);
 
     // memory_save is fire-and-forget (no follow-up needed)
     if (saveMatch != null) {
@@ -679,6 +682,15 @@ class ChatProvider extends ChangeNotifier {
       }
       debugLog(DebugSource.mainAgent, 'Tool: generate_image("$prompt", size=$size, ref=$refStr)');
       await _executeImageGeneration(prompt, model, size, refStr, assistantMsg, systemPrompt);
+      return true;
+    }
+
+    // run_python: execute Python code locally
+    if (pythonMatch != null) {
+      final code = pythonMatch.group(1)!
+          .replaceAll('\\"', '"').replaceAll('\\n', '\n');
+      debugLog(DebugSource.mainAgent, 'Tool: run_python (${code.length} chars)');
+      await _executePython(code, assistantMsg, systemPrompt);
       return true;
     }
 
@@ -1207,6 +1219,111 @@ class ChatProvider extends ChangeNotifier {
     }
   }
 
+  /// Execute Python code and show results. Supports interactive input.
+  Future<void> _executePython(
+      String code, Message assistantMsg, String systemPrompt) async {
+    // Check if code uses input() — needs interactive handling
+    final needsInput = RegExp(r'\binput\s*\(').hasMatch(code);
+
+    String output;
+    if (needsInput) {
+      // For interactive programs, provide mock inputs and note it
+      // Replace input() calls with predefined values or skip
+      output = await _runPythonInteractive(code);
+    } else {
+      output = await _runPythonSimple(code);
+    }
+
+    // Append code + output to assistant message
+    final codeDisplay = '\n\n```python\n$code\n```\n'
+        '\n**Ausgabe:**\n```\n$output\n```';
+    assistantMsg.content = stripToolBlocks(assistantMsg.content) + codeDisplay;
+    notifyListeners();
+    storage.saveConversation(_conversation).catchError((_) {});
+  }
+
+  Future<String> _runPythonSimple(String code) async {
+    // Try server-side first
+    final url = middlewareUrl(universalApiKey, '/v1/code/execute');
+    if (url != null) {
+      try {
+        final response = await http.post(Uri.parse(url),
+            headers: {'Content-Type': 'application/json',
+                      'Authorization': 'Bearer $universalApiKey'},
+            body: jsonEncode({'code': code, 'timeout': 15}),
+        ).timeout(const Duration(seconds: 20));
+
+        if (response.statusCode == 200) {
+          final json = jsonDecode(response.body) as Map<String, dynamic>;
+          final stdout = json['stdout'] as String? ?? '';
+          final stderr = json['stderr'] as String? ?? '';
+          final exitCode = json['exit_code'] as int? ?? -1;
+          if (exitCode != 0 && stderr.isNotEmpty) {
+            return '${stdout}Error (exit $exitCode):\n$stderr';
+          }
+          return stdout.isEmpty ? '(keine Ausgabe)' : stdout;
+        }
+      } catch (_) {}
+    }
+
+    // Fallback: local Python
+    try {
+      final result = await Process.run('python', ['-c', code],
+          workingDirectory: workspacePath)
+          .timeout(const Duration(seconds: 15));
+      final stdout = (result.stdout as String).trim();
+      final stderr = (result.stderr as String).trim();
+      if (result.exitCode != 0 && stderr.isNotEmpty) {
+        return '${stdout.isNotEmpty ? "$stdout\n" : ""}Error:\n$stderr';
+      }
+      return stdout.isEmpty ? '(keine Ausgabe)' : stdout;
+    } catch (e) {
+      return 'Python nicht verfuegbar: $e';
+    }
+  }
+
+  Future<String> _runPythonInteractive(String code) async {
+    // For interactive programs: replace input() with preset values
+    // and run non-interactively
+    final wrappedCode = '''
+import sys
+_input_queue = []
+_input_idx = [0]
+_original_input = input
+def _mock_input(prompt=""):
+    if prompt:
+        print(prompt, end="")
+    if _input_idx[0] < len(_input_queue):
+        val = _input_queue[_input_idx[0]]
+        _input_idx[0] += 1
+        print(val)
+        return val
+    print("[Warte auf Eingabe...]")
+    raise EOFError("Programm wartet auf Benutzereingabe - interaktiver Modus nicht verfuegbar")
+import builtins
+builtins.input = _mock_input
+
+$code
+''';
+    try {
+      final result = await Process.run('python', ['-c', wrappedCode],
+          workingDirectory: workspacePath)
+          .timeout(const Duration(seconds: 15));
+      final stdout = (result.stdout as String).trim();
+      final stderr = (result.stderr as String).trim();
+      // Filter out the EOFError if that's the only error
+      if (stderr.contains('EOFError') && stdout.isNotEmpty) {
+        return '$stdout\n\n(Programm benoetigt Benutzereingabe - interaktiver Modus)';
+      }
+      if (result.exitCode != 0 && stderr.isNotEmpty) {
+        return '${stdout.isNotEmpty ? "$stdout\n" : ""}Error:\n$stderr';
+      }
+      return stdout.isEmpty ? '(keine Ausgabe)' : stdout;
+    } catch (e) {
+      return 'Python execution error: $e';
+    }
+  }
+
   Future<String> _executeWikipedia(String query, String depth) async {
     try {
       // Use language from settings
@@ -1581,9 +1698,13 @@ WICHTIG - Bei JEDER Antwort auf Bildungsplan-Fragen MUSST du:
 4. ALLE gefundenen Seiten auflisten, nicht nur die beste
 Beispiel-Antwort: "Auf Seite 27 steht: '...' (https://www.hamburg.de/.../informatik-data.pdf#page=27)"
 
-9. Python-Code ausfuehren (ueber den Unteragenten):
-Der Unteragent kann Python-Code ausfuehren mit [[tool:run_python code="..."]].
+9. Python-Code ausfuehren:
+[[tool:run_python code="print('Hello World')"]]
+Fuehre Python-Code direkt aus. Der Code wird lokal oder auf dem Server ausgefuehrt.
 Nutze das wenn der User Code testen, rechnen oder programmieren will.
+WICHTIG: Escape Anfuehrungszeichen im Code mit \" und Zeilenumbrueche mit \n.
+Beispiel mehrzeiliger Code: [[tool:run_python code="for i in range(5):\n    print(f'Zahl {i}')"]]
+Programme mit input() werden erkannt und erhalten Eingabeforderungen.
 
 10. Bilder anzeigen — zeige dem Nutzer Bilder aus dem Workspace:
 Wenn der Nutzer ein Bild sehen will das du generiert hast, benutze generate_image oder
