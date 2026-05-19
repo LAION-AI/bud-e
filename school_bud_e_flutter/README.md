@@ -4,7 +4,9 @@
 
 Think of it as a personal assistant for students and teachers: you talk or type, and BUD-E helps you learn, create, and explore. It connects to AI services through a middleware server ([Admin Bud-E](https://github.com/LAION-AI/Admin_Bud-E)) that your school or organization controls — so your data stays private and costs stay manageable.
 
-> **Download the latest APK:** See [Releases](https://github.com/LAION-AI/bud-e/releases)
+[![Download APK](https://img.shields.io/badge/Download-APK%20(Android)-green?style=for-the-badge&logo=android)](https://github.com/LAION-AI/bud-e/releases/download/v0.1.0-beta/BUD-E-v0.1.0-beta.apk)
+
+> **[Download the latest APK](https://github.com/LAION-AI/bud-e/releases/download/v0.1.0-beta/BUD-E-v0.1.0-beta.apk)** | [All Releases](https://github.com/LAION-AI/bud-e/releases)
 
 ---
 

@@ -44,7 +44,7 @@ Future<String> writeDocx(String markdown, String outputPath,
     }
   }
 
-  final bodyXml = _mdToOoxml(processedMd, imageRefs: images.keys.toList());
+  final bodyXml = _mdToOoxml(processedMd, imageRefs: images.keys.toList(), imageBytesMap: images);
   await File(outputPath).writeAsBytes(
       _buildZip(bodyXml, images: images));
   return outputPath;
@@ -58,7 +58,7 @@ String _esc(String s) => s
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;');
 
-String _mdToOoxml(String md, {List<String>? imageRefs}) {
+String _mdToOoxml(String md, {List<String>? imageRefs, Map<String, List<int>>? imageBytesMap}) {
   final buf = StringBuffer();
   for (final line in md.split('\n')) {
     final t = line.trim();
@@ -66,7 +66,7 @@ String _mdToOoxml(String md, {List<String>? imageRefs}) {
     final imgMatch = RegExp(r'<<IMAGE:(rImg\d+)>>').firstMatch(t);
     if (imgMatch != null) {
       final rId = imgMatch.group(1)!;
-      buf.write(_imageBlock(rId));
+      buf.write(_imageBlock(rId, imageBytes: imageBytesMap?[rId]));
       continue;
     }
     if (t.isEmpty) {
@@ -214,9 +214,38 @@ String _run(String text, {bool bold = false, bool italic = false}) {
 }
 
 /// Inline image block for DOCX (OOXML drawing).
-String _imageBlock(String rId) {
-  const cx = 4500000; // ~4.7 inches EMU
-  const cy = 3000000; // ~3.1 inches EMU
+/// If imageBytes is provided, auto-detects aspect ratio.
+String _imageBlock(String rId, {List<int>? imageBytes}) {
+  var cx = 4500000; // ~4.7 inches EMU default
+  var cy = 3000000; // ~3.1 inches EMU default
+
+  // Auto-detect aspect ratio from PNG/JPEG header
+  if (imageBytes != null && imageBytes.length > 30) {
+    int? w, h;
+    // PNG
+    if (imageBytes[0] == 0x89 && imageBytes[1] == 0x50) {
+      w = (imageBytes[16] << 24) | (imageBytes[17] << 16) | (imageBytes[18] << 8) | imageBytes[19];
+      h = (imageBytes[20] << 24) | (imageBytes[21] << 16) | (imageBytes[22] << 8) | imageBytes[23];
+    }
+    // JPEG
+    if (imageBytes[0] == 0xFF && imageBytes[1] == 0xD8) {
+      for (var i = 2; i < imageBytes.length - 10; i++) {
+        if (imageBytes[i] == 0xFF && (imageBytes[i + 1] == 0xC0 || imageBytes[i + 1] == 0xC2)) {
+          h = (imageBytes[i + 5] << 8) | imageBytes[i + 6];
+          w = (imageBytes[i + 7] << 8) | imageBytes[i + 8];
+          break;
+        }
+      }
+    }
+    if (w != null && h != null && w > 0 && h > 0) {
+      final aspect = w / h;
+      // Scale to fit page width (max 4.7 inches = 4500000 EMU)
+      cx = 4500000;
+      cy = (cx / aspect).round();
+      // Cap height to ~6 inches
+      if (cy > 5500000) { cy = 5500000; cx = (cy * aspect).round(); }
+    }
+  }
   return '<w:p><w:pPr><w:jc w:val="center"/></w:pPr>'
       '<w:r><w:drawing>'
       '<wp:inline distT="0" distB="0" distL="0" distR="0" '

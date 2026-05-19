@@ -19,8 +19,9 @@ import '../services/image_registry.dart';
 
 /// Regex to parse tool calls from LLM text output.
 /// Matches both inline args and block content format.
+/// Supports escaped quotes (\") inside argument values.
 final _toolCallRegex = RegExp(
-    r'\[\[tool:(\w+)\s+((?:[a-z_]+="[^"]*"\s*)*)\]\]');
+    r'\[\[tool:(\w+)\s+((?:[a-z_]+="(?:[^"\\]|\\.)*"\s*)*)\]\]');
 
 /// Regex for block content: [[tool:write_file path="x"]] followed by <<<CONTENT...CONTENT>>>
 final _blockContentRegex = RegExp(
@@ -28,10 +29,11 @@ final _blockContentRegex = RegExp(
     multiLine: true);
 
 /// Parses key="value" pairs from a tool call string.
+/// Handles escaped quotes (\") inside values.
 Map<String, String> _parseToolArgs(String argsStr) {
   final map = <String, String>{};
-  for (final m in RegExp(r'(\w+)="([^"]*)"').allMatches(argsStr)) {
-    map[m.group(1)!] = m.group(2)!;
+  for (final m in RegExp(r'(\w+)="((?:[^"\\]|\\.)*)"').allMatches(argsStr)) {
+    map[m.group(1)!] = m.group(2)!.replaceAll('\\"', '"').replaceAll('\\n', '\n');
   }
   return map;
 }

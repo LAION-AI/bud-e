@@ -1257,7 +1257,7 @@ class ChatProvider extends ChangeNotifier {
       id: taskId,
       instruction: instruction,
       inputFiles: filePaths,
-      maxSteps: isPresentation ? 20 : 25,
+      maxSteps: isPresentation ? 20 : 12,
     );
 
     _agentTasks[taskId] = task;
