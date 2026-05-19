@@ -1,6 +1,8 @@
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:path/path.dart' as p;
 import '../providers/chat_provider.dart';
@@ -37,6 +39,33 @@ class _ChatInputState extends State<ChatInput> {
     for (final xFile in details.files) {
       final path = xFile.path;
       final destPath = await chat.copyFileToWorkspace(path);
+      if (destPath != null) {
+        setState(() => _attachedFiles.add(destPath));
+      }
+    }
+  }
+
+  Future<void> _pickImage() async {
+    final isDesktop = Platform.isWindows || Platform.isMacOS || Platform.isLinux;
+    if (isDesktop) {
+      // Desktop: open file picker filtered to images
+      final result = await FilePicker.platform.pickFiles(
+        allowMultiple: false,
+        type: FileType.image,
+      );
+      if (result == null || result.files.isEmpty || result.files.first.path == null) return;
+      final chat = context.read<ChatProvider>();
+      final destPath = await chat.copyFileToWorkspace(result.files.first.path!);
+      if (destPath != null) {
+        setState(() => _attachedFiles.add(destPath));
+      }
+    } else {
+      // Mobile: open camera
+      final picker = ImagePicker();
+      final photo = await picker.pickImage(source: ImageSource.camera);
+      if (photo == null) return;
+      final chat = context.read<ChatProvider>();
+      final destPath = await chat.copyFileToWorkspace(photo.path);
       if (destPath != null) {
         setState(() => _attachedFiles.add(destPath));
       }
@@ -160,6 +189,25 @@ class _ChatInputState extends State<ChatInput> {
                       chat.startRecording();
                     }
                   },
+                ),
+                const SizedBox(width: 4),
+                // Camera button
+                Tooltip(
+                  message: 'Foto aufnehmen',
+                  child: InkWell(
+                    onTap: chat.isLoading ? null : _pickImage,
+                    borderRadius: BorderRadius.circular(22),
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: colors.surfaceContainerLow,
+                      ),
+                      child: Icon(Icons.camera_alt,
+                          size: 18, color: colors.onSurfaceVariant),
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 4),
                 // File attach button

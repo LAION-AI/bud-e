@@ -723,6 +723,76 @@ class SubAgentRunner {
             return 'Code execution failed: $e';
           }
         }(),
+      'search_workspace' => () async {
+          final query = args['query'] ?? '';
+          final dir = Directory(workspacePath);
+          if (!await dir.exists()) return 'Workspace leer';
+          final files = <String>[];
+          await for (final entity in dir.list()) {
+            if (entity is File) {
+              final name = p.basename(entity.path).toLowerCase();
+              if (query.isEmpty || name.contains(query.toLowerCase())) {
+                final size = await entity.length();
+                files.add('${p.basename(entity.path)} (${(size / 1024).toStringAsFixed(0)} KB)');
+              }
+            }
+          }
+          if (files.isEmpty) return 'Keine Dateien gefunden fuer "$query"';
+          return 'Dateien im Workspace (${files.length}):\n${files.join("\n")}';
+        }(),
+      'html_to_docx' => () async {
+          final htmlPath = args['html_path'] ?? args['path'] ?? '';
+          final outputPath = args['output_path'] ?? htmlPath.replaceAll('.html', '.docx').replaceAll('.htm', '.docx');
+          final resolved = _resolvePath(htmlPath, workspacePath);
+          if (!await File(resolved).exists()) return 'HTML-Datei nicht gefunden: $htmlPath';
+          var html = await File(resolved).readAsString();
+          // Convert HTML to Markdown for DOCX generation
+          final md = html
+              .replaceAll(RegExp(r'<br\s*/?>'), '\n')
+              .replaceAll(RegExp(r'<hr[^>]*>'), '\n---\n')
+              .replaceAll(RegExp(r'<h1[^>]*>(.*?)</h1>', caseSensitive: false, dotAll: true), '# \$1\n')
+              .replaceAll(RegExp(r'<h2[^>]*>(.*?)</h2>', caseSensitive: false, dotAll: true), '## \$1\n')
+              .replaceAll(RegExp(r'<h3[^>]*>(.*?)</h3>', caseSensitive: false, dotAll: true), '### \$1\n')
+              .replaceAll(RegExp(r'<b[^>]*>(.*?)</b>', caseSensitive: false, dotAll: true), '**\$1**')
+              .replaceAll(RegExp(r'<strong[^>]*>(.*?)</strong>', caseSensitive: false, dotAll: true), '**\$1**')
+              .replaceAll(RegExp(r'<i[^>]*>(.*?)</i>', caseSensitive: false, dotAll: true), '*\$1*')
+              .replaceAll(RegExp(r'<em[^>]*>(.*?)</em>', caseSensitive: false, dotAll: true), '*\$1*')
+              .replaceAll(RegExp(r'<li[^>]*>(.*?)</li>', caseSensitive: false, dotAll: true), '- \$1\n')
+              .replaceAll(RegExp(r'<p[^>]*>(.*?)</p>', caseSensitive: false, dotAll: true), '\$1\n\n')
+              .replaceAll(RegExp(r'<style[^>]*>.*?</style>', caseSensitive: false, dotAll: true), '')
+              .replaceAll(RegExp(r'<[^>]+>'), '')
+              .replaceAll('&amp;', '&').replaceAll('&lt;', '<').replaceAll('&gt;', '>')
+              .replaceAll('&nbsp;', ' ').replaceAll(RegExp(r'\n{3,}'), '\n\n');
+          final resolvedOut = _resolvePath(outputPath, workspacePath);
+          final actualPath = await writeDocx(md, resolvedOut);
+          task.addGeneratedFile(actualPath);
+          return 'DOCX erstellt aus HTML: ${p.basename(actualPath)}';
+        }(),
+      'html_to_pdf' => () async {
+          final htmlPath = args['html_path'] ?? args['path'] ?? '';
+          final outputPath = args['output_path'] ?? htmlPath.replaceAll('.html', '.pdf').replaceAll('.htm', '.pdf');
+          final resolved = _resolvePath(htmlPath, workspacePath);
+          if (!await File(resolved).exists()) return 'HTML-Datei nicht gefunden: $htmlPath';
+          var html = await File(resolved).readAsString();
+          // Convert HTML to Markdown for PDF generation
+          final md = html
+              .replaceAll(RegExp(r'<br\s*/?>'), '\n')
+              .replaceAll(RegExp(r'<h1[^>]*>(.*?)</h1>', caseSensitive: false, dotAll: true), '# \$1\n')
+              .replaceAll(RegExp(r'<h2[^>]*>(.*?)</h2>', caseSensitive: false, dotAll: true), '## \$1\n')
+              .replaceAll(RegExp(r'<h3[^>]*>(.*?)</h3>', caseSensitive: false, dotAll: true), '### \$1\n')
+              .replaceAll(RegExp(r'<b[^>]*>(.*?)</b>', caseSensitive: false, dotAll: true), '**\$1**')
+              .replaceAll(RegExp(r'<strong[^>]*>(.*?)</strong>', caseSensitive: false, dotAll: true), '**\$1**')
+              .replaceAll(RegExp(r'<li[^>]*>(.*?)</li>', caseSensitive: false, dotAll: true), '- \$1\n')
+              .replaceAll(RegExp(r'<p[^>]*>(.*?)</p>', caseSensitive: false, dotAll: true), '\$1\n\n')
+              .replaceAll(RegExp(r'<style[^>]*>.*?</style>', caseSensitive: false, dotAll: true), '')
+              .replaceAll(RegExp(r'<[^>]+>'), '')
+              .replaceAll('&amp;', '&').replaceAll('&lt;', '<').replaceAll('&gt;', '>')
+              .replaceAll('&nbsp;', ' ').replaceAll(RegExp(r'\n{3,}'), '\n\n');
+          final resolvedOut = _resolvePath(outputPath, workspacePath);
+          await _writePdf(md, resolvedOut);
+          task.addGeneratedFile(resolvedOut);
+          return 'PDF erstellt aus HTML: ${p.basename(resolvedOut)}';
+        }(),
       _ => 'Unbekanntes Tool: $name',
     };
   }
@@ -1502,6 +1572,9 @@ TOOLS:
 [[tool:web_search query="Suchbegriffe"]]  (Brave Search - sucht im Web)
 [[tool:web_scrape url="https://example.com"]]  (Text einer Webseite extrahieren)
 [[tool:run_python code="print('Hello World')"]]  (Python-Code ausfuehren, Ergebnis zurueck)
+[[tool:search_workspace query="kaffee"]]  (Dateien im Workspace suchen)
+[[tool:html_to_docx html_path="datei.html" output_path="datei.docx"]]  (HTML in Word konvertieren)
+[[tool:html_to_pdf html_path="datei.html" output_path="datei.pdf"]]  (HTML in PDF konvertieren)
 
 DATEIEN SCHREIBEN - ZWEI FORMATE:
 

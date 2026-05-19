@@ -7,18 +7,20 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
+import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/widgets.dart';
 import '../providers/chat_provider.dart';
+import '../screens/memory_explorer_screen.dart';
 import 'debug_log.dart';
 
 class DebugApiServer {
   HttpServer? _server;
   final ChatProvider _chat;
   final GlobalKey _repaintKey;
+  final GlobalKey<NavigatorState> _navigatorKey;
   static const int _port = 8790;
 
-  DebugApiServer(this._chat, this._repaintKey);
+  DebugApiServer(this._chat, this._repaintKey, this._navigatorKey);
 
   Future<void> start() async {
     try {
@@ -62,6 +64,11 @@ class DebugApiServer {
           await _listFiles(req);
         case '/images':
           await _listImages(req);
+        case '/navigate':
+          await _navigate(req, params);
+        case '/go_back':
+          _navigatorKey.currentState?.pop();
+          _json(req, {'navigated': 'back'});
         case '/debug_log':
           await _debugLog(req, params);
         default:
@@ -236,6 +243,23 @@ class DebugApiServer {
       }).toList(),
       'total': entries.length,
     });
+  }
+
+  /// GET /navigate?to=memory — navigate to a screen
+  Future<void> _navigate(HttpRequest req, Map<String, String> params) async {
+    final to = params['to'] ?? '';
+    final nav = _navigatorKey.currentState;
+    if (nav == null) {
+      _json(req, {'error': 'No navigator'}, status: 500);
+      return;
+    }
+    switch (to) {
+      case 'memory':
+        nav.push(MaterialPageRoute(builder: (_) => const MemoryExplorerScreen()));
+        _json(req, {'navigated': 'memory'});
+      default:
+        _json(req, {'error': 'Unknown screen: $to', 'available': ['memory']}, status: 400);
+    }
   }
 
   void _json(HttpRequest req, Map<String, dynamic> data, {int status = 200}) {

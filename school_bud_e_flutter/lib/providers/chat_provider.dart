@@ -1585,7 +1585,12 @@ Beispiel-Antwort: "Auf Seite 27 steht: '...' (https://www.hamburg.de/.../informa
 Der Unteragent kann Python-Code ausfuehren mit [[tool:run_python code="..."]].
 Nutze das wenn der User Code testen, rechnen oder programmieren will.
 
-10. Arbeitsblatt erstellen — fuer Lehrer:
+10. Bilder anzeigen — zeige dem Nutzer Bilder aus dem Workspace:
+Wenn der Nutzer ein Bild sehen will das du generiert hast, benutze generate_image oder
+zeige ein bestehendes Bild: nenne einfach die Bild-ID (z.B. IMG_a7x3kp) im Text.
+Der Nutzer kann auch im Memory Explorer unter Agent Workspace alle Dateien sehen.
+
+11. Arbeitsblatt erstellen — fuer Lehrer:
 Wenn der Nutzer ein Arbeitsblatt, Uebungsblatt oder Aufgabenblatt fuer den Unterricht will:
 Erstelle es mit run_agent als .docx UND .pdf. Enthalte:
 - Schueler-Name/Datum-Felder oben

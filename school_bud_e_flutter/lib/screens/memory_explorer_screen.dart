@@ -15,12 +15,20 @@ class MemoryExplorerScreen extends StatefulWidget {
   State<MemoryExplorerScreen> createState() => _MemoryExplorerScreenState();
 }
 
+enum _SortMode { name, modified, created, size }
+
 class _MemoryExplorerScreenState extends State<MemoryExplorerScreen> {
   String _currentRelPath = '';
   String? _selectedFile;
   String _fileContent = '';
   List<FileSystemEntity> _entries = [];
+  List<FileSystemEntity> _allEntries = []; // unfiltered
+  Map<String, FileStat> _statCache = {};
   bool _loading = true;
+  _SortMode _sortMode = _SortMode.modified;
+  bool _sortAscending = false; // descending by default for date
+  String _searchQuery = '';
+  final _searchController = TextEditingController();
 
   @override
   void initState() {
@@ -32,19 +40,92 @@ class _MemoryExplorerScreenState extends State<MemoryExplorerScreen> {
     setState(() => _loading = true);
     final storage = context.read<ChatProvider>().storage;
     final entries = await storage.listDirectory(relPath);
-    entries.sort((a, b) {
+    // Cache stats for all files
+    final stats = <String, FileStat>{};
+    for (final e in entries) {
+      stats[e.path] = await e.stat();
+    }
+    setState(() {
+      _currentRelPath = relPath;
+      _allEntries = entries;
+      _statCache = stats;
+      _selectedFile = null;
+      _fileContent = '';
+      _searchQuery = '';
+      _searchController.clear();
+      _loading = false;
+    });
+    _applySortAndFilter();
+  }
+
+  void _applySortAndFilter() {
+    if (_searchQuery.isNotEmpty) {
+      // Recursive search across subfolders
+      _recursiveSearch();
+      return;
+    }
+
+    var list = List<FileSystemEntity>.from(_allEntries);
+    _sortEntries(list);
+    setState(() => _entries = list);
+  }
+
+  Future<void> _recursiveSearch() async {
+    final q = _searchQuery.toLowerCase();
+    final rootPath = context.read<ChatProvider>().storage.rootPath;
+    final basePath = _currentRelPath.isEmpty
+        ? rootPath
+        : p.join(rootPath, _currentRelPath);
+    final dir = Directory(basePath);
+    if (!await dir.exists()) {
+      setState(() => _entries = []);
+      return;
+    }
+
+    final results = <FileSystemEntity>[];
+    await for (final entity in dir.list(recursive: true)) {
+      if (p.basename(entity.path).toLowerCase().contains(q)) {
+        results.add(entity);
+        // Cache stat for new entries
+        if (!_statCache.containsKey(entity.path)) {
+          _statCache[entity.path] = await entity.stat();
+        }
+      }
+    }
+
+    _sortEntries(results);
+    if (_searchQuery.toLowerCase() == q) {
+      setState(() => _entries = results);
+    }
+  }
+
+  void _sortEntries(List<FileSystemEntity> list) {
+    list.sort((a, b) {
       final aIsDir = a is Directory;
       final bIsDir = b is Directory;
       if (aIsDir && !bIsDir) return -1;
       if (!aIsDir && bIsDir) return 1;
-      return p.basename(a.path).compareTo(p.basename(b.path));
-    });
-    setState(() {
-      _currentRelPath = relPath;
-      _entries = entries;
-      _selectedFile = null;
-      _fileContent = '';
-      _loading = false;
+      if (aIsDir && bIsDir) {
+        return p.basename(a.path).compareTo(p.basename(b.path));
+      }
+
+      final aStat = _statCache[a.path];
+      final bStat = _statCache[b.path];
+      int cmp;
+      switch (_sortMode) {
+        case _SortMode.name:
+          cmp = p.basename(a.path).toLowerCase()
+              .compareTo(p.basename(b.path).toLowerCase());
+        case _SortMode.modified:
+          cmp = (aStat?.modified ?? DateTime(0))
+              .compareTo(bStat?.modified ?? DateTime(0));
+        case _SortMode.created:
+          cmp = (aStat?.changed ?? DateTime(0))
+              .compareTo(bStat?.changed ?? DateTime(0));
+        case _SortMode.size:
+          cmp = (aStat?.size ?? 0).compareTo(bStat?.size ?? 0);
+      }
+      return _sortAscending ? cmp : -cmp;
     });
   }
 
@@ -55,6 +136,12 @@ class _MemoryExplorerScreenState extends State<MemoryExplorerScreen> {
       _selectedFile = relPath;
       _fileContent = content;
     });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   List<String> get _breadcrumbs {
@@ -146,6 +233,92 @@ class _MemoryExplorerScreenState extends State<MemoryExplorerScreen> {
             ),
           ),
 
+          // Search & sort bar
+          if (_selectedFile == null && !_loading)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(
+                color: colors.surface,
+                border: Border(bottom: BorderSide(color: colors.outlineVariant)),
+              ),
+              child: Row(
+                children: [
+                  // Search field
+                  Expanded(
+                    child: SizedBox(
+                      height: 36,
+                      child: TextField(
+                        controller: _searchController,
+                        style: const TextStyle(fontSize: 13),
+                        decoration: InputDecoration(
+                          hintText: 'Dateiname suchen...',
+                          hintStyle: const TextStyle(fontSize: 13),
+                          prefixIcon: const Icon(Icons.search, size: 18),
+                          suffixIcon: _searchQuery.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.close, size: 16),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    setState(() => _searchQuery = '');
+                                    _applySortAndFilter();
+                                  },
+                                )
+                              : null,
+                          filled: true,
+                          fillColor: colors.surfaceContainerLow,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(18),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                        ),
+                        onChanged: (v) {
+                          _searchQuery = v;
+                          _applySortAndFilter();
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Sort dropdown
+                  PopupMenuButton<_SortMode>(
+                    tooltip: 'Sortierung',
+                    icon: Icon(_sortModeIcon, size: 20, color: colors.onSurfaceVariant),
+                    onSelected: (mode) {
+                      if (mode == _sortMode) {
+                        setState(() => _sortAscending = !_sortAscending);
+                      } else {
+                        setState(() {
+                          _sortMode = mode;
+                          _sortAscending = mode == _SortMode.name;
+                        });
+                      }
+                      _applySortAndFilter();
+                    },
+                    itemBuilder: (_) => [
+                      _sortMenuItem(_SortMode.name, Icons.sort_by_alpha, 'Name'),
+                      _sortMenuItem(_SortMode.modified, Icons.edit_calendar, 'Änderungsdatum'),
+                      _sortMenuItem(_SortMode.created, Icons.calendar_today, 'Erstellungsdatum'),
+                      _sortMenuItem(_SortMode.size, Icons.storage, 'Dateigröße'),
+                    ],
+                  ),
+                  // Ascending/descending toggle
+                  IconButton(
+                    icon: Icon(
+                      _sortAscending ? Icons.arrow_upward : Icons.arrow_downward,
+                      size: 18,
+                      color: colors.primary,
+                    ),
+                    tooltip: _sortAscending ? 'Aufsteigend' : 'Absteigend',
+                    onPressed: () {
+                      setState(() => _sortAscending = !_sortAscending);
+                      _applySortAndFilter();
+                    },
+                  ),
+                ],
+              ),
+            ),
+
           // Main content
           Expanded(
             child: _loading
@@ -159,15 +332,45 @@ class _MemoryExplorerScreenState extends State<MemoryExplorerScreen> {
     );
   }
 
+  IconData get _sortModeIcon => switch (_sortMode) {
+    _SortMode.name => Icons.sort_by_alpha,
+    _SortMode.modified => Icons.edit_calendar,
+    _SortMode.created => Icons.calendar_today,
+    _SortMode.size => Icons.storage,
+  };
+
+  PopupMenuItem<_SortMode> _sortMenuItem(_SortMode mode, IconData icon, String label) {
+    final isActive = _sortMode == mode;
+    return PopupMenuItem(
+      value: mode,
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: isActive ? Theme.of(context).colorScheme.primary : null),
+          const SizedBox(width: 8),
+          Text(label, style: TextStyle(
+            fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+          )),
+          if (isActive) ...[
+            const Spacer(),
+            Icon(_sortAscending ? Icons.arrow_upward : Icons.arrow_downward,
+                size: 16, color: Theme.of(context).colorScheme.primary),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildDirectoryView(ColorScheme colors) {
     if (_entries.isEmpty) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.folder_off, size: 48, color: colors.outline),
+            Icon(_searchQuery.isNotEmpty ? Icons.search_off : Icons.folder_off,
+                size: 48, color: colors.outline),
             const SizedBox(height: 8),
-            Text('Empty folder', style: TextStyle(color: colors.onSurfaceVariant)),
+            Text(_searchQuery.isNotEmpty ? 'Keine Treffer' : 'Empty folder',
+                style: TextStyle(color: colors.onSurfaceVariant)),
           ],
         ),
       );
@@ -183,6 +386,17 @@ class _MemoryExplorerScreenState extends State<MemoryExplorerScreen> {
         final rootPath = context.read<ChatProvider>().storage.rootPath;
         final relPath = p.relative(entity.path, from: rootPath);
 
+        // Show subfolder path when searching recursively
+        final currentBase = _currentRelPath.isEmpty
+            ? rootPath
+            : p.join(rootPath, _currentRelPath);
+        final relFromCurrent = p.relative(entity.path, from: currentBase);
+        final inSubfolder = _searchQuery.isNotEmpty &&
+            relFromCurrent.contains(Platform.pathSeparator);
+        final subfolderHint = inSubfolder
+            ? p.dirname(relFromCurrent).replaceAll('\\', '/')
+            : null;
+
         return ListTile(
           leading: Icon(
             isDir ? Icons.folder : _iconForFile(name),
@@ -191,18 +405,21 @@ class _MemoryExplorerScreenState extends State<MemoryExplorerScreen> {
           title: Text(name, style: const TextStyle(fontSize: 14)),
           subtitle: isDir
               ? null
-              : FutureBuilder<FileStat>(
-                  future: entity.stat(),
-                  builder: (_, snap) {
-                    if (!snap.hasData) return const SizedBox();
-                    final size = snap.data!.size;
-                    final mod = snap.data!.modified;
+              : Builder(builder: (_) {
+                  final stat = _statCache[entity.path];
+                  if (stat == null) return const SizedBox();
+                  final sizeDate = '${_formatSize(stat.size)} — ${_formatDate(stat.modified)}';
+                  if (subfolderHint != null) {
                     return Text(
-                      '${_formatSize(size)} — ${_formatDate(mod)}',
+                      '$subfolderHint/ — $sizeDate',
                       style: TextStyle(fontSize: 11, color: colors.outline),
                     );
-                  },
-                ),
+                  }
+                  return Text(
+                    sizeDate,
+                    style: TextStyle(fontSize: 11, color: colors.outline),
+                  );
+                }),
           trailing: isDir
               ? Icon(Icons.chevron_right, color: colors.outline)
               : null,

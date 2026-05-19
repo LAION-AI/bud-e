@@ -7,6 +7,8 @@ import 'screens/chat_screen.dart';
 
 /// Global key for the RepaintBoundary used by the debug API screenshot endpoint.
 final GlobalKey debugRepaintKey = GlobalKey();
+/// Global navigator key for debug API navigation.
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -40,7 +42,7 @@ class _SchoolBudEAppState extends State<SchoolBudEApp> {
 
   void _startDebugServer(ChatProvider chat) {
     if (_debugServer != null) return;
-    _debugServer = DebugApiServer(chat, debugRepaintKey);
+    _debugServer = DebugApiServer(chat, debugRepaintKey, navigatorKey);
     _debugServer!.start();
   }
 
@@ -56,6 +58,7 @@ class _SchoolBudEAppState extends State<SchoolBudEApp> {
         return chat;
       },
       child: MaterialApp(
+        navigatorKey: navigatorKey,
         title: 'BUD-E',
         debugShowCheckedModeBanner: false,
         themeMode: ThemeMode.system,
@@ -127,10 +130,11 @@ class _SchoolBudEAppState extends State<SchoolBudEApp> {
             fillColor: const Color(0xFF2D261E),
           ),
         ),
-        home: RepaintBoundary(
+        builder: (context, child) => RepaintBoundary(
           key: debugRepaintKey,
-          child: const ChatScreen(),
+          child: child!,
         ),
+        home: const ChatScreen(),
       ),
     );
   }
