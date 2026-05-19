@@ -1347,6 +1347,9 @@ class ChatProvider extends ChangeNotifier {
             m.role == MessageRole.assistant && m.content.trim().isEmpty &&
             m.attachedFiles.isEmpty);
         notifyListeners();
+
+        // Save conversation with attached files (persistence!)
+        storage.saveConversation(_conversation).catchError((_) {});
       } else if (task.status == AgentTaskStatus.error) {
         debugLog(DebugSource.agentRegistry, 'Agent error: ${task.error}');
         final errorMsg = Message.assistant(
@@ -1582,7 +1585,17 @@ Beispiel-Antwort: "Auf Seite 27 steht: '...' (https://www.hamburg.de/.../informa
 Der Unteragent kann Python-Code ausfuehren mit [[tool:run_python code="..."]].
 Nutze das wenn der User Code testen, rechnen oder programmieren will.
 
-10. Unteragent — fuer komplexe mehrstufige Aufgaben:
+10. Arbeitsblatt erstellen — fuer Lehrer:
+Wenn der Nutzer ein Arbeitsblatt, Uebungsblatt oder Aufgabenblatt fuer den Unterricht will:
+Erstelle es mit run_agent als .docx UND .pdf. Enthalte:
+- Schueler-Name/Datum-Felder oben
+- Klare Aufgabenstellungen mit Nummerierung
+- Lueckentexte, Rechenaufgaben, Multiple-Choice oder offene Fragen
+- Platz fuer Antworten (Linien oder Kaestchen)
+- Erwartungshorizont/Loesungen auf separater Seite
+Der Agent prueft das Layout selbst und korrigiert Fehler.
+
+11. Unteragent — fuer komplexe mehrstufige Aufgaben:
 [[tool:run_agent instruction="Aufgabenbeschreibung"]]
 Der Agent kann: Web-Suche (Brave Search), Webseiten scrapen, Wikipedia, Dateien lesen/schreiben (DOCX/HTML/PDF/PPTX), Bilder generieren und einbetten.
 

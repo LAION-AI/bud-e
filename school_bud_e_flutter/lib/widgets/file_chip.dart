@@ -1,9 +1,12 @@
-/// Clickable file chip — opens a file with the system default app.
+/// Clickable file chip — opens, shares, or copies file path.
 library;
 
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path/path.dart' as p;
+import 'package:url_launcher/url_launcher.dart';
 
 class FileChip extends StatelessWidget {
   final String filePath;
@@ -19,6 +22,7 @@ class FileChip extends StatelessWidget {
       message: filePath,
       child: InkWell(
         onTap: () => OpenFilex.open(filePath),
+        onLongPress: () => _showFileMenu(context),
         borderRadius: BorderRadius.circular(8),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -34,7 +38,7 @@ class FileChip extends StatelessWidget {
               Icon(_iconForExt(ext), size: 14, color: colors.primary),
               const SizedBox(width: 4),
               ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 250),
+                constraints: const BoxConstraints(maxWidth: 220),
                 child: Text(
                   name,
                   style: TextStyle(
@@ -45,10 +49,83 @@ class FileChip extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const SizedBox(width: 2),
-              Icon(Icons.open_in_new, size: 10, color: colors.outline),
+              const SizedBox(width: 4),
+              Icon(Icons.more_vert, size: 12, color: colors.outline),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  void _showFileMenu(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                p.basename(filePath),
+                style: TextStyle(fontWeight: FontWeight.w600, color: colors.onSurface),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.open_in_new),
+              title: const Text('Open'),
+              subtitle: Text(filePath, style: const TextStyle(fontSize: 11)),
+              onTap: () { Navigator.pop(ctx); OpenFilex.open(filePath); },
+            ),
+            ListTile(
+              leading: const Icon(Icons.share),
+              title: const Text('Share'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                // Use Android share intent via platform channel
+                try {
+                  final uri = Uri.parse(filePath);
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                } catch (_) {
+                  // Fallback: copy path
+                  Clipboard.setData(ClipboardData(text: filePath));
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Path copied (sharing not available)'),
+                          behavior: SnackBarBehavior.floating),
+                    );
+                  }
+                }
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.copy),
+              title: const Text('Copy path'),
+              onTap: () {
+                Navigator.pop(ctx);
+                Clipboard.setData(ClipboardData(text: filePath));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Path copied'),
+                      behavior: SnackBarBehavior.floating,
+                      duration: Duration(seconds: 1)),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.folder_open),
+              title: const Text('Open folder'),
+              onTap: () {
+                Navigator.pop(ctx);
+                OpenFilex.open(p.dirname(filePath));
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
         ),
       ),
     );
