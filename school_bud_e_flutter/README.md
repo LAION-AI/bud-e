@@ -4,23 +4,91 @@
 
 Think of it as a personal assistant for students and teachers: you talk or type, and BUD-E helps you learn, create, and explore. It connects to AI services through a middleware server ([Admin Bud-E](https://github.com/LAION-AI/Admin_Bud-E)) that your school or organization controls — so your data stays private and costs stay manageable.
 
+> **Download the latest APK:** See [Releases](https://github.com/LAION-AI/bud-e/releases)
+
 ---
 
-## What BUD-E Can Do
+## All Features
 
-| Feature | Description |
-|---------|-------------|
-| **Chat** | Natural conversation with memory across sessions |
-| **Voice** | Speech-to-text input + text-to-speech output |
-| **Web Search** | Brave Search + Wikipedia + website scraping |
-| **Documents** | Create Word (.docx), PDF, HTML files with images |
-| **Presentations** | PowerPoint (.pptx) with AI-generated images per slide |
-| **Images** | Generate and edit images (Gemini, Imagen, FLUX.2) |
-| **Music** | Full songs with vocals and lyrics (Lyria 3 Pro, up to 3 min) |
-| **Curriculum Search** | Search through education plans with BM25 ranking |
-| **Memory** | Remembers facts, preferences, and conversation history |
-| **Multi-language** | Responds in the language you speak |
-| **Conversation Branching** | Regenerate responses, navigate between alternative branches |
+### Chat & Communication
+- **Chat with LLM** — Streaming responses via middleware (Gemini 2.5 Flash/Pro)
+- **Voice Input (ASR)** — Microphone button, Whisper transcription
+- **Text-to-Speech (TTS)** — Read responses aloud, per-message TTS toggle
+- **Auto Language Detection** — Responds in the user's language
+- **Multilingual UI** — German, English, French, Spanish (welcome screen, status messages, agent feedback)
+- **Conversation Branching** — Regenerate button, branch navigation (← 1/3 →)
+- **Clickable Links** — URLs in responses open in browser (url_launcher)
+- **Code Blocks** — Syntax label, dark theme, copy button, inline edit mode
+
+### Document Creation (Sub-Agent)
+- **Word (.docx)** — Calibri font, blue headings, embedded images, automatic HTML-to-Markdown conversion
+- **PDF (.pdf)** — Helvetica font, WinAnsi encoding (correct umlauts ä/ö/ü/ß, em-dash, smart quotes, €)
+- **PowerPoint (.pptx)** — 4 layouts (Title / Image+Bullets / Image-only / Text-only), adaptive image sizing based on aspect ratio, Calibri font, slide numbers, image-first enforcement
+- **HTML (.html)** — Inline CSS, base64-embedded images
+- **Markdown (.md)**, **RTF (.rtf)**
+- **File Chips** — Generated documents shown as clickable icons with file type symbols
+
+### Image Generation
+- **Models**: Gemini 3 Pro Image, Imagen 4.0, FLUX.2 (Pro/Max/Klein), nano-banana
+- **Aspect Ratios**: square (1:1), landscape (16:9), portrait (9:16), photo (4:3), wide (21:9)
+- **Image Editing**: Reference images for style transfer
+- **Image Registry**: Every image gets a unique IMG_xxx ID
+
+### Music Generation (Lyria 3 Pro)
+- **Full Songs with Vocals** — Up to 184s / ~3 minutes, MP3 output
+- **Lyrics Support** — `[Verse]`, `[Chorus]`, `[Bridge]`, `[Outro]` tags
+- **Two-Step Workflow**: Draft prompt + lyrics → user confirms → generate
+- **Content Policy Error Handling** — Clear message + rephrasing tips
+
+### Web Research (Sub-Agent)
+- **Brave Search** — Web search with top-5 parallel scraping
+- **Web Scrape** — Extract page content (5s timeout, parallel-friendly)
+- **Wikipedia** — Article lookup (de/en)
+- **Weather** — Current conditions via wttr.in
+- **News** — Latest from tagesschau.de
+
+### Curriculum Search (Bildungsplan, BM25)
+- **1,548 pages** from **32 Hamburg education plans** indexed
+- **4 school types**: Grundschule, Stadtteilschule, Gymnasium Sek I, Studienstufe
+- **17 subjects**: Deutsch, Englisch, Mathematik, Biologie, Chemie, Physik, Informatik, Geschichte, Geographie, Sport, Religion, Wirtschaft, Psychologie, and more
+- **Bundled Assets** — Index auto-extracted on first launch (works offline)
+- **Clickable PDF Links** with page numbers (`URL#page=27`)
+- **Snippet Extraction** with query term highlighting
+- **Safety Net** — Auto-triggers search even if LLM skips the tool call
+
+### Memory System
+- **Episodic Memory** — Conversation summaries, auto-saved per session
+- **Semantic Memory** — Long-term knowledge with trigger words and related concepts
+- **Working Memory** — Active session context
+- **BM25 Memory Search** — Keyword search across all memory files
+- **Priority-Based Context Construction** — ~20K token budget, 1st/2nd order activation, German stopwords
+
+### Agent System
+- **Sub-Agent** with tool calling (web_search, web_scrape, generate_image, write_file, run_python, etc.)
+- **Agent Task Widget** — Gear animation, progress bar, expandable step history (tap to show all)
+- **Health Checks** — Verification at 2s/5s/10s, auto-restart on failure
+- **Fallback Regex** — Detects tool calls even with escaped quotes in LLM output
+- **Floating Agent Widgets** — Running agents always visible even without message link
+- **Image Generation Limit** — Max 10 per agent run to prevent infinite retries
+- **Quality Control** — Automatic file verification and content check
+- **Python Execution** — Server-side (via middleware) or local fallback
+
+### Persona & Settings
+- **Persona Export/Import** — ZIP file with personality, memories, conversations, workspace files
+- **Skill Explorer** — Visual skill browser with categories, enable/disable toggles
+- **System Prompt Editor** — Customize personality and behavior
+- **Language Selection** — Deutsch, English, Francais, Espanol
+- **Token Budget Sliders** — Episodic and total context budgets
+- **TTS/ASR Toggles**
+- **API Key** with encoded middleware URL (works on any device)
+
+### Platforms
+- **Android** — APK (tested on emulator + real devices)
+- **Windows** — Desktop (native)
+- **iOS** — Build-ready (requires Mac with Xcode)
+- **macOS** — Build-ready
+
+---
 
 ## Architecture
 
@@ -95,37 +163,6 @@ flutter build ios --release
 
 # Windows
 flutter build windows --release
-```
-
----
-
-## Project Structure
-
-```
-lib/
-├── main.dart                    # App entry point
-├── config/api_config.dart       # API key decoding, middleware URL
-├── models/
-│   ├── message.dart             # Message with tree branching (parentId)
-│   ├── conversation.dart        # Conversation with branch navigation
-│   └── agent_task.dart          # Sub-agent task tracking
-├── providers/
-│   └── chat_provider.dart       # Central state: chat, tools, agents, memory
-├── screens/                     # UI screens (chat, settings, debug, memory)
-├── services/
-│   ├── context_builder.dart     # Priority-based context construction
-│   ├── memory_search.dart       # BM25 search over memory files
-│   ├── bildungsplan_search.dart # BM25 search over education curricula
-│   ├── chat_service.dart        # LLM streaming
-│   ├── tts_service.dart         # Text-to-speech
-│   ├── asr_service.dart         # Speech-to-text recording
-│   └── file_storage_service.dart# Persistent storage
-├── memory/memory_store.dart     # Episodic + semantic memory management
-├── agents/
-│   ├── sub_agent_runner.dart    # Sub-agent with tool calling (DOCX, PPTX, etc.)
-│   ├── memory_updater.dart      # Background memory consolidation
-│   └── tools/                   # Web search, file ops, document generation
-└── widgets/                     # Message bubbles, file chips, agent status
 ```
 
 ---
