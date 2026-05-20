@@ -11,6 +11,7 @@ import '../models/agent_persona.dart';
 import '../services/persona_io.dart';
 import '../utils/app_strings.dart';
 import 'skill_explorer_screen.dart';
+import 'wakeword_debug_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -446,7 +447,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         contentPadding: EdgeInsets.zero,
                       ),
                       if (devices.isNotEmpty)
-                        DropdownButtonFormField<String>(
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: DropdownButtonFormField<String>(
                           value: ww.selectedDevice?.id,
                           decoration: const InputDecoration(
                             labelText: 'Mikrofon auswählen',
@@ -465,7 +468,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             } else {
                               ww.selectedDevice = devices.firstWhere((d) => d.id == v);
                             }
-                            // Restart listening with new device
                             if (ww.isListening) {
                               ww.stopListening();
                               ww.startListening();
@@ -473,6 +475,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             chat.notifyListeners();
                           },
                         ),
+                        ),
+                      const SizedBox(height: 8),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.bug_report, size: 18),
+                        label: const Text('Wake Word Debug'),
+                        onPressed: () => Navigator.push(context,
+                            MaterialPageRoute(builder: (_) => const WakeWordDebugScreen())),
+                      ),
                     ],
                   );
                 },

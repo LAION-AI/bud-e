@@ -1,6 +1,6 @@
 /// Wake word detection service using ONNX runtime.
 /// Pipeline: Audio (16kHz) -> Mel Spectrogram -> Speech Embeddings -> Classifier
-/// Uses 3 ONNX models from livekit-wakeword project.
+/// Uses sliding window: records continuously, infers every 0.5s on last 2.5s.
 library;
 
 import 'dart:async';
@@ -18,8 +18,9 @@ import 'debug_log.dart';
 
 class WakeWordService {
   static const int sampleRate = 16000;
-  static const int chunkDurationMs = 2500; // 2.5s to ensure >=16 embeddings
-  static const int chunkSamples = 32000; // 2s at 16kHz
+  static const int windowSamples = 40000; // 2.5s ring buffer
+  static const int slideSamples = 8000;   // 0.5s slide
+  static const int recordChunkMs = 600;   // record slightly more than 0.5s
   static const double threshold = 0.1;
   static const int embeddingWindow = 76;
   static const int embeddingStride = 8;
@@ -39,6 +40,10 @@ class WakeWordService {
   DateTime _lastDetection = DateTime(2000);
   String? _beepPath;
   bool _shapeLogged = false;
+
+  // Ring buffer for sliding window
+  final Float32List _ringBuffer = Float32List(windowSamples);
+  int _ringFilled = 0; // how many valid samples in buffer
 
   void Function()? onWakeWordDetected;
   InputDevice? selectedDevice;
@@ -62,20 +67,14 @@ class WakeWordService {
       _clsSession = await _ort.createSession(clsPath);
 
       debugLog(DebugSource.system,
-          'WakeWord loaded: mel inputs=${_melSession!.inputNames} outputs=${_melSession!.outputNames}');
-      debugLog(DebugSource.system,
-          'WakeWord loaded: emb inputs=${_embSession!.inputNames} outputs=${_embSession!.outputNames}');
-      debugLog(DebugSource.system,
-          'WakeWord loaded: cls inputs=${_clsSession!.inputNames} outputs=${_clsSession!.outputNames}');
+          'WakeWord loaded: mel=${_melSession!.inputNames} emb=${_embSession!.inputNames} cls=${_clsSession!.inputNames}');
 
-      // List available input devices
       try {
         availableDevices = await _recorder.listInputDevices();
         debugLog(DebugSource.system,
             'WakeWord: ${availableDevices.length} mics: ${availableDevices.map((d) => d.label).join(", ")}');
       } catch (_) {}
 
-      // Generate a short confirmation beep WAV
       _beepPath = p.join(modelDir.path, 'beep.wav');
       if (!File(_beepPath!).existsSync()) {
         await File(_beepPath!).writeAsBytes(_generateBeepWav());
@@ -97,15 +96,19 @@ class WakeWordService {
     return targetPath;
   }
 
+  /// Start continuous listening with sliding window.
   Future<void> startListening() async {
     if (!_modelsLoaded || _isListening) return;
     _isListening = true;
-    debugLog(DebugSource.system, 'WakeWord: start listening');
+    _ringFilled = 0;
+    debugLog(DebugSource.system, 'WakeWord: start listening (sliding window)');
+
+    // Record chunks every 0.5s and slide into ring buffer
     _listenTimer = Timer.periodic(
-      const Duration(milliseconds: chunkDurationMs + 200), // small gap
-      (_) => _recordAndProcess(),
+      const Duration(milliseconds: recordChunkMs + 100),
+      (_) => _recordSlice(),
     );
-    _recordAndProcess();
+    _recordSlice(); // start immediately
   }
 
   void stopListening() {
@@ -113,10 +116,12 @@ class WakeWordService {
     _listenTimer?.cancel();
     _listenTimer = null;
     _recorder.stop();
+    _ringFilled = 0;
     debugLog(DebugSource.system, 'WakeWord: stopped');
   }
 
-  Future<void> _recordAndProcess() async {
+  /// Record a 0.5s chunk, append to ring buffer, then run inference on full 2.5s window.
+  Future<void> _recordSlice() async {
     if (!_isListening || _isProcessing) return;
     _isProcessing = true;
 
@@ -127,7 +132,7 @@ class WakeWordService {
       }
 
       final tempDir = await getTemporaryDirectory();
-      final wavPath = p.join(tempDir.path, 'ww_chunk.wav');
+      final wavPath = p.join(tempDir.path, 'ww_slice.wav');
 
       await _recorder.start(
         RecordConfig(
@@ -140,45 +145,62 @@ class WakeWordService {
         path: wavPath,
       );
 
-      await Future.delayed(const Duration(milliseconds: chunkDurationMs));
+      await Future.delayed(const Duration(milliseconds: recordChunkMs));
       final path = await _recorder.stop();
       if (path == null) { _isProcessing = false; return; }
 
       final wavBytes = await File(path).readAsBytes();
-      final pcm = _wavToFloat32(wavBytes);
-      if (pcm == null || pcm.length < 8000) {
-        debugLog(DebugSource.system, 'WakeWord: bad audio pcm=${pcm?.length ?? 0} wav=${wavBytes.length}');
+      final newPcm = _wavToFloat32(wavBytes);
+      if (newPcm == null || newPcm.isEmpty) {
         _isProcessing = false;
         return;
       }
 
-      // Log audio stats for debugging
-      final rms = pcm.fold<double>(0, (s, v) => s + v * v) / pcm.length;
-      final rmsDb = (10 * (rms > 0 ? (rms).toString().length : 0)).toString();
+      // Slide ring buffer: shift old data left, append new data
+      final newLen = newPcm.length.clamp(0, windowSamples);
+      if (_ringFilled + newLen > windowSamples) {
+        // Shift left to make room
+        final shift = (_ringFilled + newLen) - windowSamples;
+        final remaining = _ringFilled - shift;
+        for (var i = 0; i < remaining; i++) {
+          _ringBuffer[i] = _ringBuffer[i + shift];
+        }
+        _ringFilled = remaining;
+      }
+      for (var i = 0; i < newLen; i++) {
+        _ringBuffer[_ringFilled + i] = newPcm[i];
+      }
+      _ringFilled += newLen;
 
-      final score = await _detect(pcm);
+      // Need at least ~2s of audio to get enough mel frames
+      if (_ringFilled < 32000) {
+        _isProcessing = false;
+        return;
+      }
+
+      // Run inference on the current window
+      final window = Float32List.sublistView(_ringBuffer, 0, _ringFilled);
+      final rms = window.fold<double>(0, (s, v) => s + v * v) / window.length;
+
+      final score = await _detect(window);
       debugLog(DebugSource.system,
           'WakeWord score: ${score.toStringAsFixed(3)} '
-          '(samples=${pcm.length}, rms=${rms.toStringAsFixed(6)})');
+          '(samples=${window.length}, rms=${rms.toStringAsFixed(6)})');
 
       if (score > threshold) {
-        // Debounce: ignore detections within 3 seconds of each other
         final now = DateTime.now();
-        if (now.difference(_lastDetection).inSeconds < 3) return;
+        if (now.difference(_lastDetection).inSeconds < 3) {
+          _isProcessing = false;
+          return;
+        }
         _lastDetection = now;
 
         debugLog(DebugSource.system, 'WakeWord DETECTED! score=${score.toStringAsFixed(3)}');
 
-        // Play confirmation beep
         if (_beepPath != null) {
-          try {
-            await _sfxPlayer.play(DeviceFileSource(_beepPath!));
-          } catch (_) {}
+          try { await _sfxPlayer.play(DeviceFileSource(_beepPath!)); } catch (_) {}
         }
-
-        // Bring window to foreground (Windows)
         _bringToForeground();
-
         onWakeWordDetected?.call();
       }
     } catch (e) {
@@ -195,42 +217,37 @@ class WakeWordService {
       // Stage 1: Mel spectrogram
       final melInputName = _melSession!.inputNames.first;
       final melInput = await OrtValue.fromList(
-        Float32List.fromList(audio),
-        [1, audio.length],
+        Float32List.fromList(audio), [1, audio.length],
       );
       final melOutputs = await _melSession!.run({melInputName: melInput});
       final melValue = melOutputs.values.first;
       await melInput.dispose();
 
-      // Get flattened mel data and apply post-processing: x/10 + 2
       final melFlat = await melValue.asFlattenedList();
       final melShape = melValue.shape;
-      // Log mel shape once
-      if (!_shapeLogged) {
-        debugLog(DebugSource.system,
-            'WakeWord mel shape=$melShape, flat len=${melFlat.length}, '
-            'first few: ${melFlat.take(5).map((v) => (v as num).toStringAsFixed(2)).join(", ")}');
-        _shapeLogged = true;
-      }
       await melValue.dispose();
 
+      if (!_shapeLogged) {
+        debugLog(DebugSource.system,
+            'WakeWord mel shape=$melShape, flat=${melFlat.length}');
+        _shapeLogged = true;
+      }
+
       // Shape: (1, 1, time, 32) or (1, time, 32)
-      final nMels = 32;
-      // Time dimension is always second-to-last
+      const nMels = 32;
       final effectiveTime = melShape[melShape.length - 2];
 
       if (effectiveTime < embeddingWindow) return 0.0;
 
-      // Apply normalization: x/10 + 2
+      // Normalize: x/10 + 2
       final melCount = effectiveTime * nMels;
-      // Skip leading batch dimensions if shape is 4D
       final melOffset = melFlat.length - melCount;
       final melNorm = Float32List(melCount);
       for (var i = 0; i < melCount; i++) {
         melNorm[i] = (melFlat[melOffset + i] as num).toDouble() / 10.0 + 2.0;
       }
 
-      // Stage 2: Extract embeddings with sliding window
+      // Stage 2: Extract embeddings
       final embInputName = _embSession!.inputNames.first;
       final embeddings = <List<double>>[];
 
@@ -245,7 +262,6 @@ class WakeWordService {
           }
         }
 
-        // Input: (1, 76, 32, 1) channels-last
         final embInput = await OrtValue.fromList(window, [1, embeddingWindow, nMels, 1]);
         final embOutputs = await _embSession!.run({embInputName: embInput});
         final embValue = embOutputs.values.first;
@@ -258,15 +274,7 @@ class WakeWordService {
               .map((v) => (v as num).toDouble()).toList());
         }
 
-        if (embeddings.length >= minEmbeddings) break; // got enough
-      }
-
-      if (embeddings.isNotEmpty) {
-        debugLog(DebugSource.system,
-            'WakeWord embs: count=${embeddings.length}/${minEmbeddings}, '
-            'first[0..3]=${embeddings.first.take(4).map((v) => v.toStringAsFixed(3)).join(",")}');
-      } else {
-        debugLog(DebugSource.system, 'WakeWord: 0 embeddings (effectiveTime=$effectiveTime, need>=$embeddingWindow)');
+        if (embeddings.length >= minEmbeddings) break;
       }
 
       if (embeddings.length < minEmbeddings) return 0.0;
@@ -295,10 +303,55 @@ class WakeWordService {
     }
   }
 
+  void _bringToForeground() {
+    if (!Platform.isWindows) return;
+    Process.run('powershell', ['-Command',
+      'Add-Type @"',
+      'using System;',
+      'using System.Runtime.InteropServices;',
+      'public class WW {',
+      '  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);',
+      '  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);',
+      '}',
+      '"@;',
+      r'$p = Get-Process -Name "school_bud_e_flutter" -EA 0 | Select -First 1;',
+      r'if ($p) { [WW]::ShowWindow($p.MainWindowHandle, 3); [WW]::SetForegroundWindow($p.MainWindowHandle) }',
+    ]).catchError((_) {});
+  }
+
+  static Uint8List _generateBeepWav() {
+    const sr = 16000;
+    const duration = 0.3;
+    const freq = 880.0;
+    final samples = (sr * duration).toInt();
+    final data = Int16List(samples);
+    for (var i = 0; i < samples; i++) {
+      final t = i / sr;
+      final envelope = (1.0 - t / duration);
+      data[i] = (sin(2 * pi * freq * t) * 16000 * envelope).toInt().clamp(-32768, 32767);
+    }
+    final dataBytes = data.buffer.asUint8List();
+    final wav = BytesBuilder();
+    wav.add(utf8.encode('RIFF'));
+    wav.add(_leU32(36 + dataBytes.length));
+    wav.add(utf8.encode('WAVE'));
+    wav.add(utf8.encode('fmt '));
+    wav.add(_leU32(16));
+    wav.add(_leU16(1));
+    wav.add(_leU16(1));
+    wav.add(_leU32(sr));
+    wav.add(_leU32(sr * 2));
+    wav.add(_leU16(2));
+    wav.add(_leU16(16));
+    wav.add(utf8.encode('data'));
+    wav.add(_leU32(dataBytes.length));
+    wav.add(dataBytes);
+    return wav.toBytes();
+  }
+
   static Float32List? _wavToFloat32(Uint8List wav) {
     if (wav.length < 44) return null;
     if (wav[0] != 0x52 || wav[1] != 0x49) return null;
-
     var offset = 12;
     while (offset < wav.length - 8) {
       final chunkId = String.fromCharCodes(wav.sublist(offset, offset + 4));
@@ -318,56 +371,6 @@ class WakeWordService {
       if (chunkSize % 2 != 0) offset++;
     }
     return null;
-  }
-
-  /// Bring app window to foreground and maximize (Windows).
-  void _bringToForeground() {
-    if (!Platform.isWindows) return;
-    // Use PowerShell to find and activate the Flutter window
-    Process.run('powershell', ['-Command',
-      'Add-Type @"',
-      'using System;',
-      'using System.Runtime.InteropServices;',
-      'public class WW {',
-      '  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);',
-      '  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);',
-      '}',
-      '"@;',
-      r'$p = Get-Process -Name "school_bud_e_flutter" -EA 0 | Select -First 1;',
-      r'if ($p) { [WW]::ShowWindow($p.MainWindowHandle, 3); [WW]::SetForegroundWindow($p.MainWindowHandle) }',
-    ]).catchError((_) {});
-  }
-
-  /// Generate a short 440Hz beep as WAV (0.3 seconds).
-  static Uint8List _generateBeepWav() {
-    const sr = 16000;
-    const duration = 0.3;
-    const freq = 880.0; // A5
-    final samples = (sr * duration).toInt();
-    final data = Int16List(samples);
-    for (var i = 0; i < samples; i++) {
-      final t = i / sr;
-      final envelope = (1.0 - t / duration); // fade out
-      data[i] = (sin(2 * pi * freq * t) * 16000 * envelope).toInt().clamp(-32768, 32767);
-    }
-    // Build WAV header
-    final dataBytes = data.buffer.asUint8List();
-    final wav = BytesBuilder();
-    wav.add(utf8.encode('RIFF'));
-    wav.add(_leU32(36 + dataBytes.length));
-    wav.add(utf8.encode('WAVE'));
-    wav.add(utf8.encode('fmt '));
-    wav.add(_leU32(16)); // chunk size
-    wav.add(_leU16(1)); // PCM
-    wav.add(_leU16(1)); // mono
-    wav.add(_leU32(sr)); // sample rate
-    wav.add(_leU32(sr * 2)); // byte rate
-    wav.add(_leU16(2)); // block align
-    wav.add(_leU16(16)); // bits per sample
-    wav.add(utf8.encode('data'));
-    wav.add(_leU32(dataBytes.length));
-    wav.add(dataBytes);
-    return wav.toBytes();
   }
 
   static Uint8List _leU16(int v) =>

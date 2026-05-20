@@ -123,12 +123,8 @@ class ChatProvider extends ChangeNotifier {
 
   /// Called when wake word "hey buddy" is detected.
   void _onWakeWord() {
-    debugLog(DebugSource.system, 'Wake word detected! Starting recording...');
-    // Start ASR recording automatically
-    if (!_isRecording && !_isLoading) {
-      startRecording();
-      notifyListeners();
-    }
+    debugLog(DebugSource.system, 'Wake word detected!');
+    notifyListeners();
   }
 
   /// Toggle wake word listening on/off.
