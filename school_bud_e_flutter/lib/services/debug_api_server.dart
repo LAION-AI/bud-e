@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import '../providers/chat_provider.dart';
 import '../screens/memory_explorer_screen.dart';
+import '../screens/wakeword_debug_screen.dart';
 import 'debug_log.dart';
 
 class DebugApiServer {
@@ -264,8 +265,11 @@ class DebugApiServer {
       case 'memory':
         nav.push(MaterialPageRoute(builder: (_) => const MemoryExplorerScreen()));
         _json(req, {'navigated': 'memory'});
+      case 'wakeword':
+        nav.push(MaterialPageRoute(builder: (_) => const WakeWordDebugScreen()));
+        _json(req, {'navigated': 'wakeword'});
       default:
-        _json(req, {'error': 'Unknown screen: $to', 'available': ['memory']}, status: 400);
+        _json(req, {'error': 'Unknown screen: $to', 'available': ['memory', 'wakeword']}, status: 400);
     }
   }
 

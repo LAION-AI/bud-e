@@ -18,7 +18,7 @@ import 'debug_log.dart';
 
 class WakeWordService {
   static const int sampleRate = 16000;
-  static const int chunkDurationMs = 2000;
+  static const int chunkDurationMs = 2500; // 2.5s to ensure >=16 embeddings
   static const int chunkSamples = 32000; // 2s at 16kHz
   static const double threshold = 0.1;
   static const int embeddingWindow = 76;
@@ -259,6 +259,14 @@ class WakeWordService {
         }
 
         if (embeddings.length >= minEmbeddings) break; // got enough
+      }
+
+      if (embeddings.isNotEmpty) {
+        debugLog(DebugSource.system,
+            'WakeWord embs: count=${embeddings.length}/${minEmbeddings}, '
+            'first[0..3]=${embeddings.first.take(4).map((v) => v.toStringAsFixed(3)).join(",")}');
+      } else {
+        debugLog(DebugSource.system, 'WakeWord: 0 embeddings (effectiveTime=$effectiveTime, need>=$embeddingWindow)');
       }
 
       if (embeddings.length < minEmbeddings) return 0.0;
