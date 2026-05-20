@@ -303,20 +303,45 @@ class WakeWordService {
     }
   }
 
-  void _bringToForeground() {
-    if (!Platform.isWindows) return;
-    Process.run('powershell', ['-Command',
-      'Add-Type @"',
-      'using System;',
-      'using System.Runtime.InteropServices;',
-      'public class WW {',
-      '  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);',
-      '  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);',
-      '}',
-      '"@;',
-      r'$p = Get-Process -Name "school_bud_e_flutter" -EA 0 | Select -First 1;',
-      r'if ($p) { [WW]::ShowWindow($p.MainWindowHandle, 3); [WW]::SetForegroundWindow($p.MainWindowHandle) }',
-    ]).catchError((_) {});
+  Future<void> _bringToForeground() async {
+    debugLog(DebugSource.system, 'WakeWord: bringing to foreground...');
+    if (Platform.isWindows) {
+      // Write a temp PS1 script and execute it
+      try {
+        final tempDir = await getTemporaryDirectory();
+        final scriptPath = p.join(tempDir.path, 'ww_foreground.ps1');
+        final script = '''
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class FGHelper {
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
+}
+"@
+\$proc = Get-Process -Name "school_bud_e_flutter" -ErrorAction SilentlyContinue | Select-Object -First 1
+if (\$proc -and \$proc.MainWindowHandle -ne [IntPtr]::Zero) {
+    [FGHelper]::ShowWindow(\$proc.MainWindowHandle, 9)  # SW_RESTORE
+    [FGHelper]::SetForegroundWindow(\$proc.MainWindowHandle)
+    Start-Sleep -Milliseconds 100
+    [FGHelper]::ShowWindow(\$proc.MainWindowHandle, 3)  # SW_MAXIMIZE
+}
+''';
+        await File(scriptPath).writeAsString(script);
+        await Process.run('powershell', ['-ExecutionPolicy', 'Bypass', '-File', scriptPath]);
+      } catch (e) {
+        debugLog(DebugSource.system, 'WakeWord foreground error: $e');
+      }
+    } else if (Platform.isAndroid) {
+      // Use Flutter's platform channel to bring activity to front
+      try {
+        const channel = MethodChannel('com.laion.bude/wakeword');
+        await channel.invokeMethod('bringToForeground');
+      } catch (e) {
+        debugLog(DebugSource.system, 'WakeWord Android foreground error: $e');
+      }
+    }
   }
 
   static Uint8List _generateBeepWav() {
