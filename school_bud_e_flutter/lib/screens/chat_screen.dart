@@ -187,8 +187,10 @@ class _ChatScreenState extends State<ChatScreen> {
         _scrollToBottom();
       }
     }
-    // Also scroll when loading state changes (streaming new content)
-    if (chat.isLoading && autoScroll && !_userScrolledUp) {
+    // Only scroll during streaming if user hasn't scrolled up
+    // Don't auto-scroll just because agent status updates
+    if (chat.isLoading && autoScroll && !_userScrolledUp &&
+        chat.agentTasks.isEmpty) {
       _scrollToBottom();
     }
 

@@ -551,6 +551,14 @@ class _MemoryExplorerScreenState extends State<MemoryExplorerScreen> {
               },
             ),
             ListTile(
+              leading: const Icon(Icons.download),
+              title: const Text('In Downloads speichern'),
+              onTap: () async {
+                Navigator.pop(c);
+                await _saveToDownloads(ctx, fullPath, name);
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.folder_open),
               title: const Text('Open containing folder'),
               onTap: () { Navigator.pop(c); OpenFilex.open(p.dirname(fullPath)); },
@@ -570,6 +578,49 @@ class _MemoryExplorerScreenState extends State<MemoryExplorerScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _saveToDownloads(BuildContext ctx, String fullPath, String name) async {
+    try {
+      String downloadsPath;
+      if (Platform.isAndroid) {
+        downloadsPath = '/storage/emulated/0/Download';
+      } else if (Platform.isWindows) {
+        downloadsPath = p.join(Platform.environment['USERPROFILE'] ?? 'C:\\Users', 'Downloads');
+      } else if (Platform.isMacOS || Platform.isLinux) {
+        downloadsPath = p.join(Platform.environment['HOME'] ?? '/', 'Downloads');
+      } else {
+        downloadsPath = p.dirname(fullPath);
+      }
+
+      final destFile = File(p.join(downloadsPath, name));
+      // Avoid overwriting: add suffix if exists
+      var dest = destFile;
+      var counter = 1;
+      while (await dest.exists()) {
+        final base = p.basenameWithoutExtension(name);
+        final ext = p.extension(name);
+        dest = File(p.join(downloadsPath, '$base ($counter)$ext'));
+        counter++;
+      }
+
+      await File(fullPath).copy(dest.path);
+      if (ctx.mounted) {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(
+            content: Text('Gespeichert: ${p.basename(dest.path)}'),
+            behavior: SnackBarBehavior.floating,
+            action: SnackBarAction(label: 'Öffnen', onPressed: () => OpenFilex.open(dest.path)),
+          ),
+        );
+      }
+    } catch (e) {
+      if (ctx.mounted) {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(content: Text('Fehler: $e'), behavior: SnackBarBehavior.floating),
+        );
+      }
+    }
   }
 
   IconData _iconForFile(String name) {
