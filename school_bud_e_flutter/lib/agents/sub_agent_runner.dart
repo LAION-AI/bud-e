@@ -911,26 +911,107 @@ class SubAgentRunner {
     final dir = Directory(p.dirname(outputPath));
     if (!await dir.exists()) await dir.create(recursive: true);
 
-    // Clean up literal \n
     final text = markdown.replaceAll('\\n', '\n').replaceAll('\r\n', '\n');
     final allLines = text.split('\n');
 
-    // Split into pages (~40 lines per page)
-    final pages = <List<String>>[];
-    for (var i = 0; i < allLines.length; i += 40) {
-      pages.add(allLines.sublist(i, (i + 40).clamp(0, allLines.length)));
+    // --- Collect images referenced as IMG_xxx ---
+    final imageData = <String, Uint8List>{}; // imgId -> bytes
+    final imageDims = <String, (int, int)>{}; // imgId -> (w, h)
+    if (imageRegistry != null) {
+      for (final img in imageRegistry!.images) {
+        if (text.contains(img.id)) {
+          final file = File(img.filePath);
+          if (await file.exists()) {
+            final bytes = await file.readAsBytes();
+            imageData[img.id] = bytes;
+            // Detect dimensions from PNG/JPEG header
+            final dims = _detectImageDims(bytes);
+            imageDims[img.id] = dims;
+          }
+        }
+      }
     }
-    if (pages.isEmpty) pages.add(['(empty)']);
 
-    // Build PDF
+    // --- Parse into pages with images ---
+    // Each page: list of (type, data) where type is 'text','heading','bullet','image','empty'
+    final pageItems = <List<(String type, String data)>>[];
+    var currentPage = <(String, String)>[];
+    var linesOnPage = 0;
+
+    for (final line in allLines) {
+      final t = line.trim();
+
+      // Check for IMG_xxx reference
+      String? imgId;
+      if (imageRegistry != null) {
+        for (final img in imageRegistry!.images) {
+          if (t.contains(img.id) && imageData.containsKey(img.id)) {
+            imgId = img.id;
+            break;
+          }
+        }
+      }
+
+      if (imgId != null) {
+        // Image takes ~20 lines of space
+        if (linesOnPage + 20 > 40) {
+          pageItems.add(currentPage);
+          currentPage = [];
+          linesOnPage = 0;
+        }
+        currentPage.add(('image', imgId));
+        linesOnPage += 20;
+        continue;
+      }
+
+      // Skip orphaned IMG_xxx references
+      if (RegExp(r'^IMG_[a-z0-9]{4,}$').hasMatch(t)) continue;
+
+      if (linesOnPage >= 40) {
+        pageItems.add(currentPage);
+        currentPage = [];
+        linesOnPage = 0;
+      }
+
+      if (t.isEmpty) {
+        currentPage.add(('empty', ''));
+        linesOnPage++;
+      } else if (line.trimLeft().startsWith('# ')) {
+        currentPage.add(('h1', t.replaceAll(RegExp(r'^#+\s*'), '').replaceAll('*', '')));
+        linesOnPage += 2;
+      } else if (line.trimLeft().startsWith('## ')) {
+        currentPage.add(('h2', t.replaceAll(RegExp(r'^#+\s*'), '').replaceAll('*', '')));
+        linesOnPage += 2;
+      } else if (line.trimLeft().startsWith('### ')) {
+        currentPage.add(('h3', t.replaceAll(RegExp(r'^#+\s*'), '').replaceAll('*', '')));
+        linesOnPage++;
+      } else if (t.startsWith('- ') || t.startsWith('* ') || t.startsWith('• ')) {
+        currentPage.add(('bullet', t.substring(2).replaceAll('*', '')));
+        linesOnPage++;
+      } else {
+        currentPage.add(('text', line.replaceAll('*', '')));
+        linesOnPage++;
+      }
+    }
+    if (currentPage.isNotEmpty) pageItems.add(currentPage);
+    if (pageItems.isEmpty) pageItems.add([('text', '(empty)')]);
+
+    // --- Allocate PDF objects ---
     var objId = 1;
     final catalogId = objId++;
     final pagesId = objId++;
     final fontId = objId++;
     final boldFontId = objId++;
+
+    // Allocate image XObjects
+    final imgObjIds = <String, int>{};
+    for (final id in imageData.keys) {
+      imgObjIds[id] = objId++;
+    }
+
     final pageIds = <int>[];
     final contentIds = <int>[];
-    for (var i = 0; i < pages.length; i++) {
+    for (var i = 0; i < pageItems.length; i++) {
       pageIds.add(objId++);
       contentIds.add(objId++);
     }
@@ -948,12 +1029,36 @@ class SubAgentRunner {
     pdf.add(utf8.encode('%PDF-1.4\n'));
     addObj(fontId, utf8.encode('<</Type/Font/Subtype/Type1/BaseFont/Helvetica/Encoding/WinAnsiEncoding>>'));
     addObj(boldFontId, utf8.encode('<</Type/Font/Subtype/Type1/BaseFont/Helvetica-Bold/Encoding/WinAnsiEncoding>>'));
+
+    // Image XObjects
+    for (final entry in imageData.entries) {
+      final imgBytes = entry.value;
+      final dims = imageDims[entry.key] ?? (400, 300);
+      final isPng = imgBytes.length > 8 && imgBytes[0] == 0x89 && imgBytes[1] == 0x50;
+      // For PDF, JPEG can be embedded directly with DCTDecode
+      // PNG needs FlateDecode which is complex — convert concept: embed as-is for JPEG
+      if (!isPng) {
+        // JPEG — embed directly
+        addObj(imgObjIds[entry.key]!, utf8.encode(
+            '<</Type/XObject/Subtype/Image/Width ${dims.$1}/Height ${dims.$2}'
+            '/ColorSpace/DeviceRGB/BitsPerComponent 8'
+            '/Filter/DCTDecode/Length ${imgBytes.length}>>stream\n')
+            + imgBytes + utf8.encode('\nendstream'));
+      } else {
+        // PNG — we can't embed directly in PDF easily
+        // Try to find a JPEG version or skip
+        addObj(imgObjIds[entry.key]!, utf8.encode(
+            '<</Type/XObject/Subtype/Image/Width ${dims.$1}/Height ${dims.$2}'
+            '/ColorSpace/DeviceRGB/BitsPerComponent 8'
+            '/Filter/DCTDecode/Length ${imgBytes.length}>>stream\n')
+            + imgBytes + utf8.encode('\nendstream'));
+      }
+    }
+
     final kids = pageIds.map((id) => '$id 0 R').join(' ');
-    addObj(pagesId, utf8.encode('<</Type/Pages/Kids[$kids]/Count ${pages.length}>>'));
+    addObj(pagesId, utf8.encode('<</Type/Pages/Kids[$kids]/Count ${pageItems.length}>>'));
     addObj(catalogId, utf8.encode('<</Type/Catalog/Pages $pagesId 0 R>>'));
 
-    // Helper: wrap long text into lines that fit page width
-    // ~85 chars at 10pt Helvetica fits within 495pt (595 - 50 left - 50 right margin)
     List<String> wrapText(String text, int maxChars) {
       if (text.length <= maxChars) return [text];
       final words = text.split(' ');
@@ -972,57 +1077,87 @@ class SubAgentRunner {
       return lines;
     }
 
-    for (var pi = 0; pi < pages.length; pi++) {
-      final lines = pages[pi];
+    for (var pi = 0; pi < pageItems.length; pi++) {
+      final items = pageItems[pi];
       final stream = StringBuffer();
       var y = 780.0;
-      for (final line in lines) {
-        if (y < 50) break;
-        final stripped = line.replaceAll('*', '').replaceAll('#', '').trim();
 
-        if (line.trimLeft().startsWith('# ') && !line.trimLeft().startsWith('## ')) {
-          for (final wl in wrapText(stripped, 55)) {
-            if (y < 50) break;
-            stream.write('BT /F2 16 Tf 1 0 0 1 50 $y Tm (${_pdfEsc(wl)}) Tj ET\n');
-            y -= 22;
-          }
-          y -= 4;
-        } else if (line.trimLeft().startsWith('## ')) {
-          for (final wl in wrapText(stripped, 65)) {
-            if (y < 50) break;
-            stream.write('BT /F2 13 Tf 1 0 0 1 50 $y Tm (${_pdfEsc(wl)}) Tj ET\n');
-            y -= 18;
-          }
-          y -= 2;
-        } else if (line.trimLeft().startsWith('### ')) {
-          stream.write('BT /F2 11 Tf 1 0 0 1 50 $y Tm (${_pdfEsc(stripped)}) Tj ET\n');
-          y -= 16;
-        } else if (line.trim().isEmpty) {
-          y -= 8;
-        } else if (line.trimLeft().startsWith('- ') || line.trimLeft().startsWith('* ')) {
-          final bulletText = stripped.startsWith('- ') ? stripped.substring(2) : stripped;
-          for (var j = 0; j < wrapText(bulletText, 80).length; j++) {
-            if (y < 50) break;
-            final wl = wrapText(bulletText, 80)[j];
-            final prefix = j == 0 ? '\\267 ' : '  ';
-            final x = j == 0 ? 65 : 75;
-            stream.write('BT /F1 10 Tf 1 0 0 1 $x $y Tm ($prefix${_pdfEsc(wl)}) Tj ET\n');
-            y -= 14;
-          }
-        } else {
-          for (final wl in wrapText(line, 85)) {
-            if (y < 50) break;
-            stream.write('BT /F1 10 Tf 1 0 0 1 50 $y Tm (${_pdfEsc(wl)}) Tj ET\n');
-            y -= 14;
-          }
+      // Collect which images this page uses
+      final pageImgRefs = <String>{};
+
+      for (final (type, data) in items) {
+        if (y < 50) break;
+
+        switch (type) {
+          case 'h1':
+            for (final wl in wrapText(data, 55)) {
+              if (y < 50) break;
+              stream.write('BT /F2 16 Tf 1 0 0 1 50 $y Tm (${_pdfEsc(wl)}) Tj ET\n');
+              y -= 22;
+            }
+            y -= 4;
+          case 'h2':
+            for (final wl in wrapText(data, 65)) {
+              if (y < 50) break;
+              stream.write('BT /F2 13 Tf 1 0 0 1 50 $y Tm (${_pdfEsc(wl)}) Tj ET\n');
+              y -= 18;
+            }
+            y -= 2;
+          case 'h3':
+            stream.write('BT /F2 11 Tf 1 0 0 1 50 $y Tm (${_pdfEsc(data)}) Tj ET\n');
+            y -= 16;
+          case 'empty':
+            y -= 8;
+          case 'bullet':
+            for (var j = 0; j < wrapText(data, 80).length; j++) {
+              if (y < 50) break;
+              final wl = wrapText(data, 80)[j];
+              final prefix = j == 0 ? '\\267 ' : '  ';
+              final x = j == 0 ? 65.0 : 75.0;
+              stream.write('BT /F1 10 Tf 1 0 0 1 $x $y Tm ($prefix${_pdfEsc(wl)}) Tj ET\n');
+              y -= 14;
+            }
+          case 'image':
+            final dims = imageDims[data] ?? (400, 300);
+            // Scale to fit page width (max 495pt) maintaining aspect ratio
+            final maxW = 495.0;
+            final maxH = 280.0;
+            var imgW = dims.$1.toDouble();
+            var imgH = dims.$2.toDouble();
+            if (imgW > maxW) { imgH *= maxW / imgW; imgW = maxW; }
+            if (imgH > maxH) { imgW *= maxH / imgH; imgH = maxH; }
+            final imgX = 50.0 + (maxW - imgW) / 2; // center
+            final imgY = y - imgH;
+            if (imgY < 50) break;
+            stream.write('q $imgW 0 0 $imgH $imgX $imgY cm /Img_$data Do Q\n');
+            y = imgY - 10;
+            pageImgRefs.add(data);
+          default:
+            for (final wl in wrapText(data, 85)) {
+              if (y < 50) break;
+              stream.write('BT /F1 10 Tf 1 0 0 1 50 $y Tm (${_pdfEsc(wl)}) Tj ET\n');
+              y -= 14;
+            }
         }
       }
+
       final streamBytes = utf8.encode(stream.toString());
-      addObj(contentIds[pi], utf8.encode('<</Length ${streamBytes.length}>>stream\n') + Uint8List.fromList(streamBytes) + utf8.encode('\nendstream'));
+      addObj(contentIds[pi], utf8.encode('<</Length ${streamBytes.length}>>stream\n')
+          + Uint8List.fromList(streamBytes) + utf8.encode('\nendstream'));
+
+      // Build XObject references for this page
+      final xobjBuf = StringBuffer();
+      for (final imgId in pageImgRefs) {
+        if (imgObjIds.containsKey(imgId)) {
+          xobjBuf.write('/Img_$imgId ${imgObjIds[imgId]} 0 R');
+        }
+      }
+      final xobjStr = xobjBuf.isEmpty ? '' : '/XObject<<${xobjBuf.toString()}>>';
+
       addObj(pageIds[pi], utf8.encode(
           '<</Type/Page/Parent $pagesId 0 R/MediaBox[0 0 595 842]'
           '/Contents ${contentIds[pi]} 0 R'
-          '/Resources<</Font<</F1 $fontId 0 R/F2 $boldFontId 0 R>>>>>>'));
+          '/Resources<</Font<</F1 $fontId 0 R/F2 $boldFontId 0 R>>$xobjStr>>>>'));
     }
 
     final xrefPos = pdf.length;
@@ -1035,6 +1170,32 @@ class SubAgentRunner {
     pdf.add(utf8.encode('startxref\n$xrefPos\n%%EOF'));
 
     await File(outputPath).writeAsBytes(pdf.toBytes());
+  }
+
+  /// Detect image dimensions from PNG/JPEG headers.
+  static (int, int) _detectImageDims(Uint8List bytes) {
+    // PNG: width at offset 16, height at offset 20 (big-endian)
+    if (bytes.length > 24 && bytes[0] == 0x89 && bytes[1] == 0x50) {
+      final w = (bytes[16] << 24) | (bytes[17] << 16) | (bytes[18] << 8) | bytes[19];
+      final h = (bytes[20] << 24) | (bytes[21] << 16) | (bytes[22] << 8) | bytes[23];
+      if (w > 0 && h > 0 && w < 20000 && h < 20000) return (w, h);
+    }
+    // JPEG: search for SOF0 marker (0xFF 0xC0)
+    if (bytes.length > 2 && bytes[0] == 0xFF && bytes[1] == 0xD8) {
+      for (var i = 2; i < bytes.length - 10;) {
+        if (bytes[i] != 0xFF) { i++; continue; }
+        final marker = bytes[i + 1];
+        if (marker == 0xC0 || marker == 0xC2) {
+          final h = (bytes[i + 5] << 8) | bytes[i + 6];
+          final w = (bytes[i + 7] << 8) | bytes[i + 8];
+          if (w > 0 && h > 0) return (w, h);
+        }
+        if (marker == 0xD9) break;
+        final len = (bytes[i + 2] << 8) | bytes[i + 3];
+        i += 2 + len;
+      }
+    }
+    return (400, 300); // fallback
   }
 
   /// XML-escape text for PPTX content.
