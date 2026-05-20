@@ -1252,22 +1252,16 @@ builtins.input = _auto_input
 
 $code
 ''';
-    try {
-      final result = await Process.run('python', ['-c', wrappedCode],
-          workingDirectory: workspacePath)
-          .timeout(const Duration(seconds: 15));
-      final stdout = (result.stdout as String).trim();
-      final stderr = (result.stderr as String).trim();
-      if (stderr.contains('EOFError') && stdout.isNotEmpty) {
-        return '$stdout\n\n(Weitere Eingabe erforderlich)';
-      }
-      if (result.exitCode != 0 && stderr.isNotEmpty) {
-        return '${stdout.isNotEmpty ? "$stdout\n" : ""}Error:\n$stderr';
-      }
-      return stdout.isEmpty ? '(keine Ausgabe)' : stdout;
-    } catch (e) {
-      return 'Python error: $e';
+    final result = await _runPython(wrappedCode);
+    if (result.contains('EOFError')) {
+      final lines = result.split('\n');
+      final clean = lines.where((l) =>
+          !l.contains('EOFError') && !l.contains('Traceback') &&
+          !l.contains('raise ') && !l.contains('File "<string>"')).toList();
+      final output = clean.join('\n').trim();
+      return '${output.isNotEmpty ? "$output\n\n" : ""}(Weitere Eingabe erforderlich)';
     }
+    return result;
   }
 
   /// Execute Python code and show results. Supports interactive input.
@@ -1293,8 +1287,9 @@ $code
     storage.saveConversation(_conversation).catchError((_) {});
   }
 
-  Future<String> _runPythonSimple(String code) async {
-    // Try server-side first
+  /// Central Python execution: server-side first, local fallback.
+  Future<String> _runPython(String code) async {
+    // Try server-side first (works on Android + desktop)
     final url = middlewareUrl(universalApiKey, '/v1/code/execute');
     if (url != null) {
       try {
@@ -1305,10 +1300,10 @@ $code
         ).timeout(const Duration(seconds: 20));
 
         if (response.statusCode == 200) {
-          final json = jsonDecode(response.body) as Map<String, dynamic>;
-          final stdout = json['stdout'] as String? ?? '';
-          final stderr = json['stderr'] as String? ?? '';
-          final exitCode = json['exit_code'] as int? ?? -1;
+          final data = jsonDecode(response.body) as Map<String, dynamic>;
+          final stdout = data['stdout'] as String? ?? '';
+          final stderr = data['stderr'] as String? ?? '';
+          final exitCode = data['exit_code'] as int? ?? -1;
           if (exitCode != 0 && stderr.isNotEmpty) {
             return '${stdout}Error (exit $exitCode):\n$stderr';
           }
@@ -1317,7 +1312,7 @@ $code
       } catch (_) {}
     }
 
-    // Fallback: local Python
+    // Fallback: local Python (desktop only)
     try {
       final result = await Process.run('python', ['-c', code],
           workingDirectory: workspacePath)
@@ -1333,46 +1328,31 @@ $code
     }
   }
 
+  Future<String> _runPythonSimple(String code) => _runPython(code);
+
   Future<String> _runPythonInteractive(String code) async {
-    // For interactive programs: replace input() with preset values
-    // and run non-interactively
     final wrappedCode = '''
-import sys
-_input_queue = []
-_input_idx = [0]
-_original_input = input
+import sys, builtins
 def _mock_input(prompt=""):
     if prompt:
         print(prompt, end="")
-    if _input_idx[0] < len(_input_queue):
-        val = _input_queue[_input_idx[0]]
-        _input_idx[0] += 1
-        print(val)
-        return val
-    print("[Warte auf Eingabe...]")
-    raise EOFError("Programm wartet auf Benutzereingabe - interaktiver Modus nicht verfuegbar")
-import builtins
+    print("[Eingabe erforderlich]")
+    raise EOFError("Interaktive Eingabe nicht verfuegbar")
 builtins.input = _mock_input
 
 $code
 ''';
-    try {
-      final result = await Process.run('python', ['-c', wrappedCode],
-          workingDirectory: workspacePath)
-          .timeout(const Duration(seconds: 15));
-      final stdout = (result.stdout as String).trim();
-      final stderr = (result.stderr as String).trim();
-      // Filter out the EOFError if that's the only error
-      if (stderr.contains('EOFError') && stdout.isNotEmpty) {
-        return '$stdout\n\n(Programm benoetigt Benutzereingabe - interaktiver Modus)';
-      }
-      if (result.exitCode != 0 && stderr.isNotEmpty) {
-        return '${stdout.isNotEmpty ? "$stdout\n" : ""}Error:\n$stderr';
-      }
-      return stdout.isEmpty ? '(keine Ausgabe)' : stdout;
-    } catch (e) {
-      return 'Python execution error: $e';
+    final result = await _runPython(wrappedCode);
+    if (result.contains('EOFError') || result.contains('Eingabe erforderlich')) {
+      // Clean up the error, keep the useful output
+      final lines = result.split('\n');
+      final clean = lines.where((l) =>
+          !l.contains('EOFError') && !l.contains('Traceback') &&
+          !l.contains('raise ') && !l.contains('File "<string>"')).toList();
+      final output = clean.join('\n').trim();
+      return '${output.isNotEmpty ? "$output\n\n" : ""}(Programm benoetigt Benutzereingabe)';
     }
+    return result;
   }
 
   Future<String> _executeWikipedia(String query, String depth) async {

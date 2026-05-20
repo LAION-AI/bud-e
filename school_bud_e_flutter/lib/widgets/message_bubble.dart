@@ -812,6 +812,9 @@ class _RichTextWithFiles extends StatelessWidget {
     r'\[([^\]]+)\]\((https?://[^\s)]+)\)',
   );
 
+  // Match image IDs like IMG_a7x3kp
+  static final _imgIdRegex = RegExp(r'\bIMG_[a-z0-9]{4,8}\b');
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -836,6 +839,12 @@ class _RichTextWithFiles extends StatelessWidget {
         matches.add((start: m.start, end: m.end, type: 'path', value: m.group(0)!, label: null));
       }
     }
+    for (final m in _imgIdRegex.allMatches(text)) {
+      final overlaps = matches.any((e) => m.start >= e.start && m.start < e.end);
+      if (!overlaps) {
+        matches.add((start: m.start, end: m.end, type: 'img', value: m.group(0)!, label: null));
+      }
+    }
 
     if (matches.isEmpty) {
       return SelectableText.rich(_buildMarkdownSpans(text, baseStyle));
@@ -853,7 +862,30 @@ class _RichTextWithFiles extends StatelessWidget {
         spans.addAll(_buildMarkdownSpans(text.substring(lastEnd, match.start), baseStyle).children ?? [TextSpan(text: text.substring(lastEnd, match.start))]);
       }
 
-      if (match.type == 'path') {
+      if (match.type == 'img') {
+        // Resolve IMG_xxx to inline image
+        final chat = context.read<ChatProvider>();
+        final img = chat.imageRegistry.findById(match.value);
+        if (img != null && File(img.filePath).existsSync()) {
+          spans.add(WidgetSpan(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 400, maxHeight: 400),
+                  child: Image.file(File(img.filePath), fit: BoxFit.contain),
+                ),
+              ),
+            ),
+          ));
+        } else {
+          spans.add(TextSpan(
+            text: match.value,
+            style: TextStyle(color: colors.primary, fontFamily: 'monospace', fontSize: 12),
+          ));
+        }
+      } else if (match.type == 'path') {
         final path = match.value.replaceAll('"', '').replaceAll("'", '');
         if (File(path).existsSync()) {
           // Inline file chip as WidgetSpan
