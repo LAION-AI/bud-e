@@ -42,3 +42,4 @@ flutter:
     - assets/melspectrogram.onnx
     - assets/embedding_model.onnx
     - assets/hey_buddy_de_small.onnx
+    - assets/hey_buddy_de_medium.onnx
