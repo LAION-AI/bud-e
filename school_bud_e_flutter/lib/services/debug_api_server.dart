@@ -69,6 +69,13 @@ class DebugApiServer {
         case '/go_back':
           _navigatorKey.currentState?.pop();
           _json(req, {'navigated': 'back'});
+        case '/wakeword':
+          final ww = _chat.wakeWordService;
+          final action = params['action'];
+          if (action == 'start') { ww.startListening(); }
+          if (action == 'stop') { ww.stopListening(); }
+          if (action == 'toggle') { _chat.toggleWakeWord(); }
+          _json(req, {'ready': ww.isReady, 'listening': ww.isListening});
         case '/debug_log':
           await _debugLog(req, params);
         default:

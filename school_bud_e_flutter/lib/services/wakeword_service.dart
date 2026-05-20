@@ -38,8 +38,11 @@ class WakeWordService {
   bool _modelsLoaded = false;
   DateTime _lastDetection = DateTime(2000);
   String? _beepPath;
+  bool _shapeLogged = false;
 
   void Function()? onWakeWordDetected;
+  InputDevice? selectedDevice;
+  List<InputDevice> availableDevices = [];
 
   bool get isListening => _isListening;
   bool get isReady => _modelsLoaded;
@@ -64,6 +67,13 @@ class WakeWordService {
           'WakeWord loaded: emb inputs=${_embSession!.inputNames} outputs=${_embSession!.outputNames}');
       debugLog(DebugSource.system,
           'WakeWord loaded: cls inputs=${_clsSession!.inputNames} outputs=${_clsSession!.outputNames}');
+
+      // List available input devices
+      try {
+        availableDevices = await _recorder.listInputDevices();
+        debugLog(DebugSource.system,
+            'WakeWord: ${availableDevices.length} mics: ${availableDevices.map((d) => d.label).join(", ")}');
+      } catch (_) {}
 
       // Generate a short confirmation beep WAV
       _beepPath = p.join(modelDir.path, 'beep.wav');
@@ -120,11 +130,12 @@ class WakeWordService {
       final wavPath = p.join(tempDir.path, 'ww_chunk.wav');
 
       await _recorder.start(
-        const RecordConfig(
+        RecordConfig(
           encoder: AudioEncoder.wav,
           sampleRate: sampleRate,
           numChannels: 1,
           bitRate: 256000,
+          device: selectedDevice,
         ),
         path: wavPath,
       );
@@ -136,12 +147,19 @@ class WakeWordService {
       final wavBytes = await File(path).readAsBytes();
       final pcm = _wavToFloat32(wavBytes);
       if (pcm == null || pcm.length < 8000) {
+        debugLog(DebugSource.system, 'WakeWord: bad audio pcm=${pcm?.length ?? 0} wav=${wavBytes.length}');
         _isProcessing = false;
         return;
       }
 
+      // Log audio stats for debugging
+      final rms = pcm.fold<double>(0, (s, v) => s + v * v) / pcm.length;
+      final rmsDb = (10 * (rms > 0 ? (rms).toString().length : 0)).toString();
+
       final score = await _detect(pcm);
-      debugLog(DebugSource.system, 'WakeWord score: ${score.toStringAsFixed(3)}');
+      debugLog(DebugSource.system,
+          'WakeWord score: ${score.toStringAsFixed(3)} '
+          '(samples=${pcm.length}, rms=${rms.toStringAsFixed(6)})');
 
       if (score > threshold) {
         // Debounce: ignore detections within 3 seconds of each other
@@ -187,23 +205,29 @@ class WakeWordService {
       // Get flattened mel data and apply post-processing: x/10 + 2
       final melFlat = await melValue.asFlattenedList();
       final melShape = melValue.shape;
+      // Log mel shape once
+      if (!_shapeLogged) {
+        debugLog(DebugSource.system,
+            'WakeWord mel shape=$melShape, flat len=${melFlat.length}, '
+            'first few: ${melFlat.take(5).map((v) => (v as num).toStringAsFixed(2)).join(", ")}');
+        _shapeLogged = true;
+      }
       await melValue.dispose();
 
-      // Determine time frames: shape is typically (1, 1, time, 32) or (1, time, 32)
+      // Shape: (1, 1, time, 32) or (1, time, 32)
       final nMels = 32;
-      final totalMelValues = melFlat.length;
-      final timeFrames = totalMelValues ~/ nMels;
-      // Account for batch dim
-      final effectiveTime = melShape.length >= 3
-          ? melShape[melShape.length - 2]
-          : timeFrames;
+      // Time dimension is always second-to-last
+      final effectiveTime = melShape[melShape.length - 2];
 
       if (effectiveTime < embeddingWindow) return 0.0;
 
       // Apply normalization: x/10 + 2
-      final melNorm = Float32List(totalMelValues);
-      for (var i = 0; i < totalMelValues; i++) {
-        melNorm[i] = (melFlat[i] as num).toDouble() / 10.0 + 2.0;
+      final melCount = effectiveTime * nMels;
+      // Skip leading batch dimensions if shape is 4D
+      final melOffset = melFlat.length - melCount;
+      final melNorm = Float32List(melCount);
+      for (var i = 0; i < melCount; i++) {
+        melNorm[i] = (melFlat[melOffset + i] as num).toDouble() / 10.0 + 2.0;
       }
 
       // Stage 2: Extract embeddings with sliding window
@@ -214,8 +238,7 @@ class WakeWordService {
         final window = Float32List(embeddingWindow * nMels);
         for (var t = 0; t < embeddingWindow; t++) {
           for (var m = 0; m < nMels; m++) {
-            // Skip batch dimension values
-            final srcIdx = start * nMels + t * nMels + m;
+            final srcIdx = (start + t) * nMels + m;
             if (srcIdx < melNorm.length) {
               window[t * nMels + m] = melNorm[srcIdx];
             }

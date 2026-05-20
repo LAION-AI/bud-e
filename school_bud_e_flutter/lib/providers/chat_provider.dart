@@ -105,12 +105,13 @@ class ChatProvider extends ChangeNotifier {
     memorySearch.buildIndex().catchError((_) {});
     bildungsplanSearch.buildIndex().catchError((_) {});
 
-    // Initialize wake word detection in background
+    // Initialize wake word detection in background and auto-start
     wakeWordService.init().then((_) {
       if (wakeWordService.isReady) {
         wakeWordService.onWakeWordDetected = _onWakeWord;
-        debugLog(DebugSource.system, 'WakeWord ready');
-        notifyListeners(); // update UI to show toggle button
+        debugLog(DebugSource.system, 'WakeWord ready — auto-starting');
+        wakeWordService.startListening();
+        notifyListeners();
       }
     }).catchError((e) {
       debugLog(DebugSource.system, 'WakeWord init error: $e');

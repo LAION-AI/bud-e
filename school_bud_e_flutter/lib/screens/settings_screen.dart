@@ -426,6 +426,61 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 12),
 
+          // ---- Microphone (Wake Word) ----
+          _SectionCard(
+            icon: Icons.mic,
+            title: 'Mikrofon (Wake Word)',
+            children: [
+              Consumer<ChatProvider>(
+                builder: (_, chat, __) {
+                  final ww = chat.wakeWordService;
+                  final devices = ww.availableDevices;
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SwitchListTile(
+                        title: const Text('Hey Buddy Erkennung'),
+                        subtitle: Text(ww.isListening ? 'Aktiv' : 'Aus'),
+                        value: ww.isListening,
+                        onChanged: ww.isReady ? (_) => chat.toggleWakeWord() : null,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      if (devices.isNotEmpty)
+                        DropdownButtonFormField<String>(
+                          value: ww.selectedDevice?.id,
+                          decoration: const InputDecoration(
+                            labelText: 'Mikrofon auswählen',
+                            prefixIcon: Icon(Icons.settings_input_component),
+                          ),
+                          items: [
+                            const DropdownMenuItem(value: null, child: Text('Standard')),
+                            ...devices.map((d) => DropdownMenuItem(
+                              value: d.id,
+                              child: Text(d.label, overflow: TextOverflow.ellipsis),
+                            )),
+                          ],
+                          onChanged: (v) {
+                            if (v == null) {
+                              ww.selectedDevice = null;
+                            } else {
+                              ww.selectedDevice = devices.firstWhere((d) => d.id == v);
+                            }
+                            // Restart listening with new device
+                            if (ww.isListening) {
+                              ww.stopListening();
+                              ww.startListening();
+                            }
+                            chat.notifyListeners();
+                          },
+                        ),
+                    ],
+                  );
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
           // ---- Memory Context ----
           _SectionCard(
             icon: Icons.memory,
