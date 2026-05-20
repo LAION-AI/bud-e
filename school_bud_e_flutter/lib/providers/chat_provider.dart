@@ -1219,6 +1219,57 @@ class ChatProvider extends ChangeNotifier {
     }
   }
 
+  /// Run Python code from UI (Run button / interactive input).
+  /// Returns the output string.
+  Future<String> runPythonFromUI(String code, {List<String> inputs = const []}) async {
+    if (inputs.isNotEmpty) {
+      return _runPythonWithInputs(code, inputs);
+    }
+    final needsInput = RegExp(r'\binput\s*\(').hasMatch(code);
+    if (needsInput) {
+      return _runPythonInteractive(code);
+    }
+    return _runPythonSimple(code);
+  }
+
+  Future<String> _runPythonWithInputs(String code, List<String> inputs) async {
+    final inputList = inputs.map((i) => "'${i.replaceAll("'", "\\'")}'").join(', ');
+    final wrappedCode = '''
+import sys, builtins
+_inputs = [$inputList]
+_idx = [0]
+def _auto_input(prompt=""):
+    if prompt:
+        print(prompt, end="")
+    if _idx[0] < len(_inputs):
+        val = _inputs[_idx[0]]
+        _idx[0] += 1
+        print(val)
+        return val
+    print("[Keine weitere Eingabe]")
+    raise EOFError()
+builtins.input = _auto_input
+
+$code
+''';
+    try {
+      final result = await Process.run('python', ['-c', wrappedCode],
+          workingDirectory: workspacePath)
+          .timeout(const Duration(seconds: 15));
+      final stdout = (result.stdout as String).trim();
+      final stderr = (result.stderr as String).trim();
+      if (stderr.contains('EOFError') && stdout.isNotEmpty) {
+        return '$stdout\n\n(Weitere Eingabe erforderlich)';
+      }
+      if (result.exitCode != 0 && stderr.isNotEmpty) {
+        return '${stdout.isNotEmpty ? "$stdout\n" : ""}Error:\n$stderr';
+      }
+      return stdout.isEmpty ? '(keine Ausgabe)' : stdout;
+    } catch (e) {
+      return 'Python error: $e';
+    }
+  }
+
   /// Execute Python code and show results. Supports interactive input.
   Future<void> _executePython(
       String code, Message assistantMsg, String systemPrompt) async {

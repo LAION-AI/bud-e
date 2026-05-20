@@ -8,8 +8,10 @@ import 'package:open_filex/open_filex.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path/path.dart' as p;
+import 'package:provider/provider.dart';
 import '../models/message.dart';
 import '../models/agent_task.dart';
+import '../providers/chat_provider.dart';
 import '../services/tts_service.dart';
 import 'agent_task_widget.dart';
 import 'file_chip.dart';
@@ -945,7 +947,16 @@ class _CodeBlock extends StatefulWidget {
 
 class _CodeBlockState extends State<_CodeBlock> {
   bool _editing = false;
+  bool _running = false;
+  String? _output;
+  bool _needsInput = false;
+  final List<String> _inputHistory = [];
   late TextEditingController _ctrl;
+  final _inputCtrl = TextEditingController();
+
+  bool get _isPython =>
+      widget.language.toLowerCase() == 'python' ||
+      widget.language.toLowerCase() == 'py';
 
   @override
   void initState() {
@@ -956,7 +967,35 @@ class _CodeBlockState extends State<_CodeBlock> {
   @override
   void dispose() {
     _ctrl.dispose();
+    _inputCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _runCode({String? extraInput}) async {
+    final chat = context.read<ChatProvider>();
+    final code = _editing ? _ctrl.text : widget.code;
+    setState(() { _running = true; _output = null; _needsInput = false; });
+
+    final inputs = List<String>.from(_inputHistory);
+    if (extraInput != null) inputs.add(extraInput);
+
+    final result = await chat.runPythonFromUI(code, inputs: inputs);
+
+    if (!mounted) return;
+    setState(() {
+      _running = false;
+      _output = result;
+      _needsInput = result.contains('Eingabe erforderlich') ||
+          result.contains('Eingabe') && result.contains('EOFError');
+      if (extraInput != null) _inputHistory.add(extraInput);
+    });
+  }
+
+  void _submitInput() {
+    final text = _inputCtrl.text;
+    if (text.isEmpty) return;
+    _inputCtrl.clear();
+    _runCode(extraInput: text);
   }
 
   @override
@@ -974,12 +1013,12 @@ class _CodeBlockState extends State<_CodeBlock> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Header: language label + copy + edit buttons
+          // Header
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: const Color(0xFF2D2D3F),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+            decoration: const BoxDecoration(
+              color: Color(0xFF2D2D3F),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
             ),
             child: Row(
               children: [
@@ -987,6 +1026,17 @@ class _CodeBlockState extends State<_CodeBlock> {
                     style: const TextStyle(fontSize: 11, color: Color(0xFF8888AA),
                         fontFamily: 'monospace')),
                 const Spacer(),
+                if (_isPython && !_running) ...[
+                  _MiniButton(
+                    icon: Icons.play_arrow,
+                    label: 'Run',
+                    onTap: () {
+                      _inputHistory.clear();
+                      _runCode();
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 _MiniButton(
                   icon: Icons.copy,
                   label: 'Copy',
@@ -1033,6 +1083,90 @@ class _CodeBlockState extends State<_CodeBlock> {
                     ),
                   ),
           ),
+          // Output section
+          if (_output != null || _running)
+            Container(
+              decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: Color(0xFF3D3D5F))),
+              ),
+              padding: const EdgeInsets.all(12),
+              child: _running
+                  ? const Row(
+                      children: [
+                        SizedBox(width: 14, height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2,
+                                color: Color(0xFF8888AA))),
+                        SizedBox(width: 8),
+                        Text('Wird ausgefuehrt...',
+                            style: TextStyle(fontSize: 12, color: Color(0xFF8888AA),
+                                fontFamily: 'monospace')),
+                      ],
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Ausgabe:',
+                            style: TextStyle(fontSize: 11, color: Color(0xFF8888AA),
+                                fontFamily: 'monospace', fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 4),
+                        SelectableText(
+                          _output!,
+                          style: const TextStyle(
+                            fontSize: 13, fontFamily: 'monospace',
+                            color: Color(0xFFA6E3A1), height: 1.5,
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+          // Interactive input field
+          if (_needsInput && !_running)
+            Container(
+              decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: Color(0xFF3D3D5F))),
+                color: Color(0xFF252540),
+                borderRadius: BorderRadius.vertical(bottom: Radius.circular(10)),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.keyboard, size: 16, color: Color(0xFF8888AA)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: _inputCtrl,
+                      style: const TextStyle(
+                        fontSize: 13, fontFamily: 'monospace',
+                        color: Color(0xFFCDD6F4),
+                      ),
+                      decoration: const InputDecoration(
+                        hintText: 'Eingabe...',
+                        hintStyle: TextStyle(color: Color(0xFF666688)),
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(vertical: 6),
+                      ),
+                      onSubmitted: (_) => _submitInput(),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  InkWell(
+                    onTap: _submitInput,
+                    borderRadius: BorderRadius.circular(4),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF3498DB),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text('Senden',
+                          style: TextStyle(fontSize: 12, color: Colors.white,
+                              fontWeight: FontWeight.w600)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );
