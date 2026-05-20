@@ -1030,23 +1030,33 @@ class SubAgentRunner {
     addObj(fontId, utf8.encode('<</Type/Font/Subtype/Type1/BaseFont/Helvetica/Encoding/WinAnsiEncoding>>'));
     addObj(boldFontId, utf8.encode('<</Type/Font/Subtype/Type1/BaseFont/Helvetica-Bold/Encoding/WinAnsiEncoding>>'));
 
-    // Image XObjects
+    // Image XObjects — convert to JPEG-compatible format for PDF
     for (final entry in imageData.entries) {
-      final imgBytes = entry.value;
+      var imgBytes = entry.value;
       final dims = imageDims[entry.key] ?? (400, 300);
       final isPng = imgBytes.length > 8 && imgBytes[0] == 0x89 && imgBytes[1] == 0x50;
-      // For PDF, JPEG can be embedded directly with DCTDecode
-      // PNG needs FlateDecode which is complex — convert concept: embed as-is for JPEG
-      if (!isPng) {
-        // JPEG — embed directly
-        addObj(imgObjIds[entry.key]!, utf8.encode(
-            '<</Type/XObject/Subtype/Image/Width ${dims.$1}/Height ${dims.$2}'
-            '/ColorSpace/DeviceRGB/BitsPerComponent 8'
-            '/Filter/DCTDecode/Length ${imgBytes.length}>>stream\n')
-            + imgBytes + utf8.encode('\nendstream'));
+
+      if (isPng) {
+        // PNG can't use DCTDecode. Extract raw RGB pixels and use FlateDecode.
+        final rawRgb = _pngToRawRgb(imgBytes, dims.$1, dims.$2);
+        if (rawRgb != null) {
+          final compressed = zlib.encode(rawRgb);
+          addObj(imgObjIds[entry.key]!, utf8.encode(
+              '<</Type/XObject/Subtype/Image/Width ${dims.$1}/Height ${dims.$2}'
+              '/ColorSpace/DeviceRGB/BitsPerComponent 8'
+              '/Filter/FlateDecode/Length ${compressed.length}>>stream\n')
+              + Uint8List.fromList(compressed) + utf8.encode('\nendstream'));
+        } else {
+          // Fallback: skip this image (create tiny placeholder)
+          final placeholder = zlib.encode(List.filled(dims.$1 * dims.$2 * 3, 200));
+          addObj(imgObjIds[entry.key]!, utf8.encode(
+              '<</Type/XObject/Subtype/Image/Width ${dims.$1}/Height ${dims.$2}'
+              '/ColorSpace/DeviceRGB/BitsPerComponent 8'
+              '/Filter/FlateDecode/Length ${placeholder.length}>>stream\n')
+              + Uint8List.fromList(placeholder) + utf8.encode('\nendstream'));
+        }
       } else {
-        // PNG — we can't embed directly in PDF easily
-        // Try to find a JPEG version or skip
+        // JPEG — embed directly with DCTDecode
         addObj(imgObjIds[entry.key]!, utf8.encode(
             '<</Type/XObject/Subtype/Image/Width ${dims.$1}/Height ${dims.$2}'
             '/ColorSpace/DeviceRGB/BitsPerComponent 8'
@@ -1655,6 +1665,82 @@ class SubAgentRunner {
     var c = 0xFFFFFFFF;
     for (final b in d) { c ^= b; for (var j = 0; j < 8; j++) c = (c & 1) != 0 ? (c >> 1) ^ 0xEDB88320 : c >> 1; }
     return c ^ 0xFFFFFFFF;
+  }
+
+  /// Extract raw RGB pixel data from a PNG file for PDF embedding.
+  /// Returns null if the PNG can't be decoded (complex format).
+  static Uint8List? _pngToRawRgb(Uint8List png, int width, int height) {
+    try {
+      // Find and concatenate all IDAT chunks
+      final idatData = BytesBuilder();
+      var i = 8; // Skip PNG signature
+      while (i < png.length - 4) {
+        final chunkLen = (png[i] << 24) | (png[i+1] << 16) | (png[i+2] << 8) | png[i+3];
+        final chunkType = String.fromCharCodes(png.sublist(i+4, i+8));
+        if (chunkType == 'IDAT') {
+          idatData.add(png.sublist(i+8, i+8+chunkLen));
+        }
+        i += 12 + chunkLen; // 4 len + 4 type + data + 4 crc
+      }
+
+      // Decompress the zlib-compressed data
+      final compressed = idatData.toBytes();
+      final decompressed = zlib.decode(compressed);
+
+      // Determine color type from IHDR
+      final colorType = png[25]; // offset 25 in IHDR
+      final bitDepth = png[24];
+      if (bitDepth != 8) return null; // only 8-bit supported
+
+      final bytesPerPixel = colorType == 6 ? 4 : (colorType == 2 ? 3 : 0);
+      if (bytesPerPixel == 0) return null; // only RGB and RGBA
+
+      final scanlineLen = 1 + width * bytesPerPixel; // +1 for filter byte
+      if (decompressed.length < height * scanlineLen) return null;
+
+      // Unfilter and extract RGB
+      final rgb = Uint8List(width * height * 3);
+      final prev = Uint8List(width * bytesPerPixel);
+
+      for (var y = 0; y < height; y++) {
+        final offset = y * scanlineLen;
+        final filter = decompressed[offset];
+        final row = decompressed.sublist(offset + 1, offset + scanlineLen);
+
+        // Apply PNG filter
+        for (var x = 0; x < width * bytesPerPixel; x++) {
+          int a = x >= bytesPerPixel ? row[x - bytesPerPixel] : 0;
+          int b = prev[x];
+          int c = (x >= bytesPerPixel && y > 0) ? prev[x - bytesPerPixel] : 0;
+          switch (filter) {
+            case 0: break; // None
+            case 1: row[x] = (row[x] + a) & 0xFF; // Sub
+            case 2: row[x] = (row[x] + b) & 0xFF; // Up
+            case 3: row[x] = (row[x] + ((a + b) >> 1)) & 0xFF; // Average
+            case 4: // Paeth
+              int p = a + b - c;
+              int pa = (p - a).abs(), pb = (p - b).abs(), pc = (p - c).abs();
+              int pr = pa <= pb && pa <= pc ? a : (pb <= pc ? b : c);
+              row[x] = (row[x] + pr) & 0xFF;
+          }
+        }
+
+        // Copy RGB (skip alpha if RGBA)
+        for (var x = 0; x < width; x++) {
+          final srcOff = x * bytesPerPixel;
+          final dstOff = (y * width + x) * 3;
+          rgb[dstOff] = row[srcOff];
+          rgb[dstOff + 1] = row[srcOff + 1];
+          rgb[dstOff + 2] = row[srcOff + 2];
+        }
+
+        prev.setRange(0, width * bytesPerPixel, row);
+      }
+
+      return rgb;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Escape a string for use inside a PDF text operator: (text) Tj
