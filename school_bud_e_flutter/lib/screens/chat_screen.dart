@@ -203,6 +203,16 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
         title: Text(greeting),
         actions: [
+          // Wake word toggle
+          if (chat.wakeWordService.isReady)
+            IconButton(
+              icon: Icon(
+                chat.isWakeWordListening ? Icons.hearing : Icons.hearing_disabled,
+                color: chat.isWakeWordListening ? colors.primary : colors.outline,
+              ),
+              tooltip: chat.isWakeWordListening ? 'Hey Buddy aus' : 'Hey Buddy an',
+              onPressed: () => chat.toggleWakeWord(),
+            ),
           // TTS on/off + stop if playing
           IconButton(
             icon: Icon(

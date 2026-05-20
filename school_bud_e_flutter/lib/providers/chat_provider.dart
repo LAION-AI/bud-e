@@ -28,6 +28,7 @@ import '../utils/app_strings.dart';
 import '../agents/tools/web_tools.dart' as web_tools;
 import '../services/image_registry.dart';
 import '../agents/tools/pdf_tools.dart' as pdf_tools;
+import '../services/wakeword_service.dart';
 
 /// Tool-call patterns using [[...]] syntax.
 final _memorySearchRegex = RegExp(
@@ -69,6 +70,7 @@ class ChatProvider extends ChangeNotifier {
   late final MemorySearch memorySearch;
   late final BildungsplanSearch bildungsplanSearch;
   final AgentRegistry agents = AgentRegistry();
+  late final WakeWordService wakeWordService;
 
   Conversation _conversation = Conversation(id: '0');
   bool _isLoading = false;
@@ -96,14 +98,47 @@ class ChatProvider extends ChangeNotifier {
         p.join(storage.rootPath, 'bildungsplaene'));
     _memoryUpdater = MemoryUpdater(storage);
     S.setLanguage(storage.defaultLanguage);
+    wakeWordService = WakeWordService();
     debugLog(DebugSource.system, 'ChatProvider initialized');
 
     // Build BM25 indexes in background
     memorySearch.buildIndex().catchError((_) {});
     bildungsplanSearch.buildIndex().catchError((_) {});
 
+    // Initialize wake word detection in background
+    wakeWordService.init().then((_) {
+      if (wakeWordService.isReady) {
+        wakeWordService.onWakeWordDetected = _onWakeWord;
+        debugLog(DebugSource.system, 'WakeWord ready');
+        notifyListeners(); // update UI to show toggle button
+      }
+    }).catchError((e) {
+      debugLog(DebugSource.system, 'WakeWord init error: $e');
+    });
+
     // Check if daily memory consolidation is needed
     _checkDailyConsolidation();
+  }
+
+  /// Called when wake word "hey buddy" is detected.
+  void _onWakeWord() {
+    debugLog(DebugSource.system, 'Wake word detected! Starting recording...');
+    // Start ASR recording automatically
+    if (!_isRecording && !_isLoading) {
+      startRecording();
+      notifyListeners();
+    }
+  }
+
+  /// Toggle wake word listening on/off.
+  bool get isWakeWordListening => wakeWordService.isListening;
+  void toggleWakeWord() {
+    if (wakeWordService.isListening) {
+      wakeWordService.stopListening();
+    } else {
+      wakeWordService.startListening();
+    }
+    notifyListeners();
   }
 
   void _checkDailyConsolidation() {
