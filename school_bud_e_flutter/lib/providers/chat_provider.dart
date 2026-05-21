@@ -51,6 +51,8 @@ final _newsRegex = RegExp(
     r'\[\[tool:news(?:\s+topic="([^"]*)")?\]\]');
 final _runPythonRegex = RegExp(
     r'\[\[tool:run_python\s+code="((?:[^"\\]|\\.)*)"\]\]');
+final _stopAgentRegex = RegExp(
+    r'\[\[tool:stop_agent\s+id="([^"]+)"\]\]');
 
 /// Matches any [[...]] block for TTS stripping.
 final _toolBlockRegex = RegExp(r'\[\[.*?\]\]', dotAll: true);
@@ -687,6 +689,14 @@ class ChatProvider extends ChangeNotifier {
     final musicMatch = _musicGenRegex.firstMatch(assistantMsg.content);
     final bildungsplanMatch = _bildungsplanRegex.firstMatch(assistantMsg.content);
     final pythonMatch = _runPythonRegex.firstMatch(assistantMsg.content);
+    final stopAgentMatch = _stopAgentRegex.firstMatch(assistantMsg.content);
+
+    // stop_agent is fire-and-forget
+    if (stopAgentMatch != null) {
+      final agentId = stopAgentMatch.group(1)!;
+      debugLog(DebugSource.mainAgent, 'Tool: stop_agent("$agentId")');
+      stopAgent(agentId);
+    }
 
     // memory_save is fire-and-forget (no follow-up needed)
     if (saveMatch != null) {
@@ -1424,6 +1434,29 @@ $code
   }
 
   /// Spawn a background sub-agent to handle a complex task.
+  /// Stop a running agent task.
+  void stopAgent(String taskId) {
+    final task = _agentTasks[taskId];
+    if (task == null) return;
+    debugLog(DebugSource.mainAgent, 'Stopping agent $taskId');
+    task.fail('Vom Benutzer gestoppt');
+    notifyListeners();
+  }
+
+  /// Get running agent info for the LLM context.
+  String getRunningAgentsInfo() {
+    final running = _agentTasks.values
+        .where((t) => t.status == AgentTaskStatus.running || t.status == AgentTaskStatus.pending)
+        .toList();
+    if (running.isEmpty) return '';
+    final buf = StringBuffer('\n=== Laufende Agenten ===\n');
+    for (final t in running) {
+      buf.writeln('Agent ${t.id}: "${t.instruction.length > 80 ? '${t.instruction.substring(0, 80)}...' : t.instruction}" '
+          '(Step ${t.currentStep}/${t.maxSteps})');
+    }
+    return buf.toString();
+  }
+
   void _spawnSubAgent(
       String instruction, String filesStr, Message triggerMsg) {
     final taskId = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
@@ -1800,11 +1833,21 @@ Der Agent prueft das Layout selbst und korrigiert Fehler.
 Der Agent kann: Web-Suche (Brave Search), Webseiten scrapen, Wikipedia, Dateien lesen/schreiben (DOCX/HTML/PDF/PPTX), Bilder generieren und einbetten.
 
 WANN run_agent BENUTZEN:
-- Dateien erstellen (Word, HTML, PDF, PowerPoint)
-- Praesentationen erstellen (PPTX mit generierten Bildern pro Folie)
+- NUR wenn der Nutzer EXPLIZIT eine Datei erstellen will (Word, PDF, PPTX, HTML)
+- NUR wenn der Nutzer EXPLIZIT eine Praesentation will
 - Recherche mit mehreren Quellen (Agent sucht, scrapt, fasst zusammen)
 - Klassenarbeiten korrigieren
 - Dateien analysieren oder umformatieren
+
+WANN run_agent NICHT benutzen:
+- Wenn der Nutzer nur ein BILD generieren will → benutze generate_image direkt
+- Wenn der Nutzer nur eine Frage stellt → beantworte sie direkt
+- Wenn der Nutzer nur Python-Code ausfuehren will → benutze run_python direkt
+- Erstelle KEINE Dokumente unaufgefordert! Nur auf explizite Anfrage.
+
+12. Laufende Agenten stoppen:
+[[tool:stop_agent id="agent_id"]]
+Stoppt einen laufenden Agenten. Benutze getRunningAgentsInfo() um IDs zu sehen.
 
 RECHERCHE-AUFGABEN:
 Wenn der Nutzer nach einer Person, Firma, Thema, Ort etc. fragt und du es nicht sicher weisst:

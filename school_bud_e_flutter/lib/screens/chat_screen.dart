@@ -341,7 +341,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
         // Floating agent tasks (not attached to any message)
         final agentEntry = floatingAgents[i - chat.messages.length];
-        return AgentTaskWidget(task: agentEntry.value);
+        return AgentTaskWidget(
+          task: agentEntry.value,
+          onStop: () => chat.stopAgent(agentEntry.key),
+        );
       },
     );
   }

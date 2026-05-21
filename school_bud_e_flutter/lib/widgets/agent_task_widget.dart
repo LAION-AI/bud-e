@@ -8,8 +8,9 @@ import 'file_chip.dart';
 class AgentTaskWidget extends StatefulWidget {
   final AgentTask task;
   final VoidCallback? onRetry;
+  final VoidCallback? onStop;
 
-  const AgentTaskWidget({super.key, required this.task, this.onRetry});
+  const AgentTaskWidget({super.key, required this.task, this.onRetry, this.onStop});
 
   @override
   State<AgentTaskWidget> createState() => _AgentTaskWidgetState();
@@ -65,11 +66,25 @@ class _AgentTaskWidgetState extends State<AgentTaskWidget> {
                     ),
                   ),
                 ),
-                if (task.status == AgentTaskStatus.running)
+                if (task.status == AgentTaskStatus.running) ...[
                   Text(
                     '${task.currentStep}/${task.maxSteps}',
                     style: TextStyle(fontSize: 11, color: colors.outline),
                   ),
+                  const SizedBox(width: 6),
+                  InkWell(
+                    onTap: widget.onStop,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: colors.errorContainer.withValues(alpha: 0.5),
+                      ),
+                      child: Icon(Icons.stop, size: 14, color: colors.error),
+                    ),
+                  ),
+                ],
               ],
             ),
             // Progress bar for running tasks

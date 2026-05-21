@@ -176,7 +176,10 @@ class MessageBubble extends StatelessWidget {
             if (agentTask != null)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
-                child: AgentTaskWidget(task: agentTask!),
+                child: AgentTaskWidget(
+                  task: agentTask!,
+                  onStop: () => context.read<ChatProvider>().stopAgent(agentTask!.id),
+                ),
               ),
             // Actions row: timestamp + copy + edit
             Padding(
