@@ -6,6 +6,8 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 import '../config/api_config.dart';
 import '../models/agent_task.dart';
 import '../services/debug_log.dart';
@@ -401,10 +403,10 @@ class SubAgentRunner {
                 '($slideCount Folien, $resolvedImgs Bilder eingebettet)';
           }
 
-          // For .pdf: generate PDF
+          // For .pdf: generate styled PDF with the pdf package
           if (ext == '.pdf') {
             final resolved = p.isAbsolute(filePath) ? filePath : p.join(workspacePath, filePath);
-            await _writePdf(content, resolved);
+            await _writeStyledPdf(content, resolved);
             task.addGeneratedFile(resolved);
             return 'PDF erstellt: ${p.basename(resolved)}';
           }
@@ -907,6 +909,225 @@ class SubAgentRunner {
   }
 
   /// Generate a simple PDF from text content.
+  /// Generate a styled PDF using the pdf package (pure Dart).
+  Future<void> _writeStyledPdf(String markdown, String outputPath) async {
+    final dir = Directory(p.dirname(outputPath));
+    if (!await dir.exists()) await dir.create(recursive: true);
+
+    final text = markdown.replaceAll('\\n', '\n').replaceAll('\r\n', '\n');
+    final lines = text.split('\n');
+
+    final pdf = pw.Document();
+    final widgets = <pw.Widget>[];
+
+    // Colors
+    const titleColor = PdfColor.fromInt(0xFF1B2A4A);
+    const accentColor = PdfColor.fromInt(0xFF3498DB);
+    const textColor = PdfColor.fromInt(0xFF2C3E50);
+    const subtleColor = PdfColor.fromInt(0xFF7F8C8D);
+
+    for (final line in lines) {
+      final t = line.trim();
+      if (t.isEmpty) {
+        widgets.add(pw.SizedBox(height: 6));
+        continue;
+      }
+
+      // Image reference
+      String? imgId;
+      if (imageRegistry != null) {
+        for (final img in imageRegistry!.images) {
+          if (t.contains(img.id)) { imgId = img.id; break; }
+        }
+      }
+      if (imgId != null) {
+        final img = imageRegistry!.findById(imgId);
+        if (img != null) {
+          try {
+            final bytes = await File(img.filePath).readAsBytes();
+            final image = pw.MemoryImage(bytes);
+            widgets.add(pw.Padding(
+              padding: const pw.EdgeInsets.symmetric(vertical: 8),
+              child: pw.Center(child: pw.Image(image,
+                  width: 400, fit: pw.BoxFit.contain)),
+            ));
+          } catch (_) {}
+        }
+        continue;
+      }
+      if (RegExp(r'^IMG_[a-z0-9]{4,}$').hasMatch(t)) continue;
+
+      // Strip markdown formatting characters for clean display
+      final clean = t.replaceAll('*', '').replaceAll('#', '').trim();
+
+      if (t.startsWith('# ') && !t.startsWith('## ')) {
+        widgets.add(pw.Padding(
+          padding: const pw.EdgeInsets.only(top: 16, bottom: 4),
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(clean, style: pw.TextStyle(
+                fontSize: 22, fontWeight: pw.FontWeight.bold, color: titleColor)),
+              pw.Container(height: 2, width: 60, color: accentColor,
+                  margin: const pw.EdgeInsets.only(top: 4)),
+            ],
+          ),
+        ));
+      } else if (t.startsWith('## ')) {
+        widgets.add(pw.Padding(
+          padding: const pw.EdgeInsets.only(top: 12, bottom: 2),
+          child: pw.Text(clean, style: pw.TextStyle(
+            fontSize: 16, fontWeight: pw.FontWeight.bold, color: titleColor)),
+        ));
+      } else if (t.startsWith('### ')) {
+        widgets.add(pw.Padding(
+          padding: const pw.EdgeInsets.only(top: 8, bottom: 2),
+          child: pw.Text(clean, style: pw.TextStyle(
+            fontSize: 13, fontWeight: pw.FontWeight.bold, color: textColor)),
+        ));
+      } else if (t.startsWith('- ') || t.startsWith('* ') || t.startsWith('• ')) {
+        final bulletText = clean.startsWith('- ') ? clean.substring(2)
+            : clean.startsWith('* ') ? clean.substring(2) : clean;
+        widgets.add(pw.Padding(
+          padding: const pw.EdgeInsets.only(left: 16, bottom: 2),
+          child: pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Container(width: 5, height: 5, margin: const pw.EdgeInsets.only(top: 4, right: 8),
+                  decoration: const pw.BoxDecoration(shape: pw.BoxShape.circle, color: accentColor)),
+              pw.Expanded(child: pw.Text(bulletText, style: const pw.TextStyle(fontSize: 11, color: textColor))),
+            ],
+          ),
+        ));
+      } else {
+        // Check for bold/italic in markdown
+        widgets.add(pw.Padding(
+          padding: const pw.EdgeInsets.only(bottom: 2),
+          child: pw.Text(clean, style: const pw.TextStyle(fontSize: 11, color: textColor, lineSpacing: 4)),
+        ));
+      }
+    }
+
+    if (widgets.isEmpty) {
+      widgets.add(pw.Text('(empty)', style: const pw.TextStyle(color: subtleColor)));
+    }
+
+    pdf.addPage(pw.MultiPage(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.all(50),
+      build: (_) => widgets,
+      footer: (ctx) => pw.Container(
+        alignment: pw.Alignment.centerRight,
+        child: pw.Text('${ctx.pageNumber} / ${ctx.pagesCount}',
+            style: const pw.TextStyle(fontSize: 9, color: subtleColor)),
+      ),
+    ));
+
+    await File(outputPath).writeAsBytes(await pdf.save());
+  }
+
+  /// Convert markdown to a nicely styled HTML document.
+  String _markdownToStyledHtml(String markdown) {
+    final text = markdown.replaceAll('\\n', '\n').replaceAll('\r\n', '\n');
+    final lines = text.split('\n');
+    final body = StringBuffer();
+
+    for (final line in lines) {
+      final t = line.trim();
+      if (t.isEmpty) { body.writeln('<br/>'); continue; }
+
+      // Check for IMG_xxx — resolve to base64 inline image
+      String? imgId;
+      if (imageRegistry != null) {
+        for (final img in imageRegistry!.images) {
+          if (t.contains(img.id)) { imgId = img.id; break; }
+        }
+      }
+      if (imgId != null) {
+        final img = imageRegistry!.findById(imgId);
+        if (img != null) {
+          try {
+            final bytes = File(img.filePath).readAsBytesSync();
+            final ext = img.filePath.toLowerCase().endsWith('.png') ? 'png' : 'jpeg';
+            final b64 = base64Encode(bytes);
+            body.writeln('<div style="text-align:center;margin:16px 0"><img src="data:image/$ext;base64,$b64" style="max-width:100%;max-height:400px;border-radius:8px"/></div>');
+          } catch (_) {}
+        }
+        continue;
+      }
+      if (RegExp(r'^IMG_[a-z0-9]{4,}$').hasMatch(t)) continue;
+
+      // Headings
+      if (t.startsWith('### ')) {
+        body.writeln('<h3>${_htmlEsc(t.substring(4).replaceAll('*', ''))}</h3>');
+      } else if (t.startsWith('## ')) {
+        body.writeln('<h2>${_htmlEsc(t.substring(3).replaceAll('*', ''))}</h2>');
+      } else if (t.startsWith('# ')) {
+        body.writeln('<h1>${_htmlEsc(t.substring(2).replaceAll('*', ''))}</h1>');
+      } else if (t.startsWith('- ') || t.startsWith('* ') || t.startsWith('• ')) {
+        body.writeln('<li>${_htmlEsc(t.substring(2).replaceAll('*', ''))}</li>');
+      } else {
+        // Bold and italic markdown
+        var html = _htmlEsc(t);
+        html = html.replaceAllMapped(RegExp(r'\*\*(.+?)\*\*'), (m) => '<strong>${m[1]}</strong>');
+        html = html.replaceAllMapped(RegExp(r'\*(.+?)\*'), (m) => '<em>${m[1]}</em>');
+        body.writeln('<p>$html</p>');
+      }
+    }
+
+    return '''<!DOCTYPE html>
+<html><head><meta charset="UTF-8"/>
+<style>
+  @page { size: A4; margin: 2cm; }
+  body { font-family: 'Segoe UI', Calibri, Helvetica, Arial, sans-serif; font-size: 11pt; line-height: 1.6; color: #2c3e50; }
+  h1 { font-size: 22pt; color: #1B2A4A; border-bottom: 2px solid #3498DB; padding-bottom: 6px; margin-top: 24px; }
+  h2 { font-size: 16pt; color: #2c3e50; margin-top: 20px; }
+  h3 { font-size: 13pt; color: #555; margin-top: 16px; }
+  p { margin: 6px 0; }
+  li { margin: 4px 0 4px 20px; }
+  img { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+</style></head><body>
+${body.toString()}
+</body></html>''';
+  }
+
+  static String _htmlEsc(String s) => s
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;');
+
+  /// Try to convert HTML to PDF via middleware server.
+  Future<bool> _htmlToPdfViaServer(String html, String outputPath) async {
+    final url = middlewareUrl(universalApiKey, '/v1/html2pdf');
+    if (url == null) return false;
+
+    try {
+      final response = await http.post(Uri.parse(url),
+          headers: {'Content-Type': 'application/json',
+                    'Authorization': 'Bearer $universalApiKey'},
+          body: jsonEncode({'html': html}),
+      ).timeout(const Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        await File(outputPath).writeAsBytes(response.bodyBytes);
+        return true;
+      }
+    } catch (_) {}
+
+    // Fallback: save as HTML and convert locally with Python weasyprint
+    try {
+      final tempHtml = '$outputPath.tmp.html';
+      await File(tempHtml).writeAsString(html);
+      final result = await Process.run('python', ['-c',
+        'from weasyprint import HTML; HTML(filename=r"$tempHtml").write_pdf(r"$outputPath")'
+      ]).timeout(const Duration(seconds: 20));
+      await File(tempHtml).delete().catchError((_) {});
+      if (result.exitCode == 0 && await File(outputPath).exists()) return true;
+    } catch (_) {}
+
+    return false;
+  }
+
   Future<void> _writePdf(String markdown, String outputPath) async {
     final dir = Directory(p.dirname(outputPath));
     if (!await dir.exists()) await dir.create(recursive: true);

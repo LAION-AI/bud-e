@@ -334,6 +334,7 @@ class _ChatScreenState extends State<ChatScreen> {
       controller: _scrollController,
       padding: const EdgeInsets.only(top: 12, bottom: 12),
       itemCount: totalItems,
+      addAutomaticKeepAlives: true,
       itemBuilder: (_, i) {
         // Regular messages
         if (i < chat.messages.length) {
@@ -341,7 +342,9 @@ class _ChatScreenState extends State<ChatScreen> {
           final taskId = msg.metadata['agentTaskId'] as String?;
           final task = taskId != null ? chat.agentTasks[taskId] : null;
           final branchInfo = chat.getBranchInfo(msg.id);
-          return MessageBubble(
+          return RepaintBoundary(
+            key: ValueKey(msg.id),
+            child: MessageBubble(
             message: msg,
             ttsService: chat.ttsServiceForReplay,
             universalApiKey: chat.universalApiKey,
@@ -355,6 +358,7 @@ class _ChatScreenState extends State<ChatScreen> {
               chat.storage.saveConversation(chat.conversation).catchError((_) {});
               (context as Element).markNeedsBuild();
             },
+          ),
           );
         }
 
