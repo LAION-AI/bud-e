@@ -122,26 +122,20 @@ class ChatProvider extends ChangeNotifier {
   }
 
   /// Called when wake word "hey buddy" is detected.
-  /// Pauses wake word, starts ASR recording.
-  /// User taps mic button to stop & send. Wake word resumes after.
+  /// If not recording: start ASR recording (wake word keeps listening).
+  /// If already recording: stop recording & send.
   void _onWakeWord() {
-    if (_isRecording || _isLoading) return;
-    debugLog(DebugSource.system, 'Wake word: start recording');
-    wakeWordService.stopListening();
-    startRecording();
-    notifyListeners();
-  }
-
-  /// Resume wake word after ASR recording is done.
-  void _resumeWakeWordAfterRecording() {
-    if (wakeWordService.isReady) {
-      Future.delayed(const Duration(seconds: 1), () {
-        if (!_isRecording) {
-          wakeWordService.startListening();
-          notifyListeners();
-        }
-      });
+    if (_isLoading) return;
+    if (_isRecording) {
+      // Second "Hey Buddy" → stop recording and send
+      debugLog(DebugSource.system, 'Wake word: stop recording & send');
+      stopRecordingAndTranscribe();
+    } else {
+      // First "Hey Buddy" → start recording (wake word keeps running)
+      debugLog(DebugSource.system, 'Wake word: start recording');
+      startRecording();
     }
+    notifyListeners();
   }
 
   /// Toggle wake word listening on/off.
@@ -1858,10 +1852,6 @@ REGELN:
     notifyListeners();
 
     final text = await _asrService.stopAndTranscribe(universalApiKey);
-
-    // Resume wake word listening after recording stops
-    _resumeWakeWordAfterRecording();
-
     if (text == null || text.trim().isEmpty) return;
 
     // Always route through the widget so attached files are included.
