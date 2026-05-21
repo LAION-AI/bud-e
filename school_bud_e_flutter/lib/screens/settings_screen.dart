@@ -588,10 +588,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         'Automatisch zum letzten Eintrag scrollen'),
                       secondary: Icon(
                         Icons.vertical_align_bottom,
-                        color: (chat.storage.getSetting('autoScrollEnabled') as bool? ?? true)
+                        color: (chat.storage.getSetting('autoScrollEnabled') as bool? ?? false)
                             ? colors.primary : colors.outline,
                       ),
-                      value: chat.storage.getSetting('autoScrollEnabled') as bool? ?? true,
+                      value: chat.storage.getSetting('autoScrollEnabled') as bool? ?? false,
                       onChanged: (v) {
                         chat.storage.setSetting('autoScrollEnabled', v);
                         (context as Element).markNeedsBuild();

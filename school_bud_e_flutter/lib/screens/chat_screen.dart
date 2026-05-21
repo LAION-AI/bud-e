@@ -22,6 +22,7 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final _scrollController = ScrollController();
   int _lastMessageCount = 0;
+  bool _wasLoading = false;
   bool _userScrolledUp = false;
 
   @override
@@ -40,23 +41,25 @@ class _ChatScreenState extends State<ChatScreen> {
   void _onScroll() {
     if (!_scrollController.hasClients) return;
     final pos = _scrollController.position;
-    // User scrolled up if not near the bottom
-    _userScrolledUp = pos.pixels < pos.maxScrollExtent - 100;
+    final wasUp = _userScrolledUp;
+    _userScrolledUp = pos.pixels < pos.maxScrollExtent - 150;
+    if (wasUp != _userScrolledUp) setState(() {});
   }
 
-  void _scrollToBottom() {
-    // Double post-frame to ensure layout is complete after new content
+  void _scrollToBottom({bool animate = true}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scrollController.hasClients) {
+      if (_scrollController.hasClients) {
+        if (animate) {
           _scrollController.animateTo(
             _scrollController.position.maxScrollExtent,
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeOut,
           );
-          _userScrolledUp = false;
+        } else {
+          _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
         }
-      });
+        _userScrolledUp = false;
+      }
     });
   }
 
@@ -179,20 +182,21 @@ class _ChatScreenState extends State<ChatScreen> {
     final colors = Theme.of(context).colorScheme;
     final greeting = chat.storage.personaName;
 
-    // Auto-scroll when new messages arrive (unless user scrolled up)
-    final autoScroll = chat.storage.getSetting('autoScrollEnabled') as bool? ?? true;
+    // Auto-scroll: only on new messages or when streaming finishes
+    // Default OFF to prevent UI jitter. User can enable in settings.
+    final autoScroll = chat.storage.getSetting('autoScrollEnabled') as bool? ?? false;
     if (chat.messages.length != _lastMessageCount) {
+      final isNew = chat.messages.length > _lastMessageCount;
       _lastMessageCount = chat.messages.length;
-      if (autoScroll && !_userScrolledUp) {
-        _scrollToBottom();
+      if (isNew && !_userScrolledUp) {
+        _scrollToBottom(animate: false);
       }
     }
-    // Only scroll during streaming if user hasn't scrolled up
-    // Don't auto-scroll just because agent status updates
-    if (chat.isLoading && autoScroll && !_userScrolledUp &&
-        chat.agentTasks.isEmpty) {
+    // Scroll once when streaming finishes (not during)
+    if (_wasLoading && !chat.isLoading && autoScroll && !_userScrolledUp) {
       _scrollToBottom();
     }
+    _wasLoading = chat.isLoading;
 
     return Scaffold(
       appBar: AppBar(
@@ -280,9 +284,24 @@ class _ChatScreenState extends State<ChatScreen> {
       body: Column(
         children: [
           Expanded(
-            child: chat.messages.isEmpty
-                ? _buildWelcome(context, colors, greeting)
-                : _buildMessageList(context, chat, colors),
+            child: Stack(
+              children: [
+                chat.messages.isEmpty
+                    ? _buildWelcome(context, colors, greeting)
+                    : _buildMessageList(context, chat, colors),
+                // Scroll-to-bottom button when scrolled up
+                if (_userScrolledUp && chat.messages.isNotEmpty)
+                  Positioned(
+                    bottom: 8,
+                    right: 16,
+                    child: FloatingActionButton.small(
+                      onPressed: _scrollToBottom,
+                      backgroundColor: colors.primaryContainer,
+                      child: Icon(Icons.keyboard_arrow_down, color: colors.primary),
+                    ),
+                  ),
+              ],
+            ),
           ),
           if (chat.isLoading)
             LinearProgressIndicator(
