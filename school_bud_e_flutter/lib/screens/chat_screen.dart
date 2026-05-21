@@ -24,6 +24,7 @@ class _ChatScreenState extends State<ChatScreen> {
   int _lastMessageCount = 0;
   bool _wasLoading = false;
   bool _userScrolledUp = false;
+  bool _userIsInteracting = false; // true while user is actively scrolling
 
   @override
   void initState() {
@@ -47,16 +48,16 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _scrollToBottom({bool animate = true}) {
+    if (_userIsInteracting) return; // never interrupt user scrolling
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
+      if (_scrollController.hasClients && !_userIsInteracting) {
+        final target = _scrollController.position.maxScrollExtent;
         if (animate) {
-          _scrollController.animateTo(
-            _scrollController.position.maxScrollExtent,
+          _scrollController.animateTo(target,
             duration: const Duration(milliseconds: 200),
-            curve: Curves.easeOut,
-          );
+            curve: Curves.easeOut);
         } else {
-          _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+          _scrollController.jumpTo(target);
         }
         _userScrolledUp = false;
       }
@@ -182,19 +183,17 @@ class _ChatScreenState extends State<ChatScreen> {
     final colors = Theme.of(context).colorScheme;
     final greeting = chat.storage.personaName;
 
-    // Auto-scroll: only on new messages or when streaming finishes
-    // Default OFF to prevent UI jitter. User can enable in settings.
-    final autoScroll = chat.storage.getSetting('autoScrollEnabled') as bool? ?? false;
+    // Only scroll to bottom when a NEW user message is added (they just sent something)
     if (chat.messages.length != _lastMessageCount) {
       final isNew = chat.messages.length > _lastMessageCount;
       _lastMessageCount = chat.messages.length;
-      if (isNew && !_userScrolledUp) {
-        _scrollToBottom(animate: false);
+      // Only auto-scroll for user's own new messages
+      if (isNew && !_userScrolledUp && !_userIsInteracting) {
+        final lastMsg = chat.messages.last;
+        if (lastMsg.role == MessageRole.user) {
+          _scrollToBottom(animate: false);
+        }
       }
-    }
-    // Scroll once when streaming finishes (not during)
-    if (_wasLoading && !chat.isLoading && autoScroll && !_userScrolledUp) {
-      _scrollToBottom();
     }
     _wasLoading = chat.isLoading;
 
@@ -286,16 +285,29 @@ class _ChatScreenState extends State<ChatScreen> {
           Expanded(
             child: Stack(
               children: [
-                chat.messages.isEmpty
-                    ? _buildWelcome(context, colors, greeting)
-                    : _buildMessageList(context, chat, colors),
+                NotificationListener<ScrollNotification>(
+                  onNotification: (n) {
+                    if (n is ScrollStartNotification && n.dragDetails != null) {
+                      _userIsInteracting = true;
+                    } else if (n is ScrollEndNotification) {
+                      // Delay reset so post-frame callbacks don't fire during deceleration
+                      Future.delayed(const Duration(milliseconds: 300), () {
+                        _userIsInteracting = false;
+                      });
+                    }
+                    return false;
+                  },
+                  child: chat.messages.isEmpty
+                      ? _buildWelcome(context, colors, greeting)
+                      : _buildMessageList(context, chat, colors),
+                ),
                 // Scroll-to-bottom button when scrolled up
                 if (_userScrolledUp && chat.messages.isNotEmpty)
                   Positioned(
                     bottom: 8,
                     right: 16,
                     child: FloatingActionButton.small(
-                      onPressed: _scrollToBottom,
+                      onPressed: () { _userIsInteracting = false; _scrollToBottom(); },
                       backgroundColor: colors.primaryContainer,
                       child: Icon(Icons.keyboard_arrow_down, color: colors.primary),
                     ),

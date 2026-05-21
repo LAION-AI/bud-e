@@ -404,11 +404,16 @@ class SubAgentRunner {
           }
 
           // For .pdf: generate styled PDF with the pdf package
+          // Also save markdown source for later editing
           if (ext == '.pdf') {
             final resolved = p.isAbsolute(filePath) ? filePath : p.join(workspacePath, filePath);
             await _writeStyledPdf(content, resolved);
+            // Save markdown source alongside PDF for editing
+            final srcPath = '${resolved}.src.md';
+            await File(srcPath).writeAsString(content);
             task.addGeneratedFile(resolved);
-            return 'PDF erstellt: ${p.basename(resolved)}';
+            return 'PDF erstellt: ${p.basename(resolved)} '
+                '(Quelltext gespeichert als ${p.basename(srcPath)} — zum Bearbeiten read_file/write_file benutzen, dann erneut als PDF speichern)';
           }
 
           // For .docx/.doc: generate real Word DOCX with optional images
