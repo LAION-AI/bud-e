@@ -1851,13 +1851,28 @@ REGELN:
     _isRecording = false;
     notifyListeners();
 
-    final text = await _asrService.stopAndTranscribe(universalApiKey);
+    var text = await _asrService.stopAndTranscribe(universalApiKey);
     if (text == null || text.trim().isEmpty) return;
+
+    // Strip trailing "Hey Buddy" (wake word stop trigger) from transcription
+    text = _stripTrailingWakeWord(text);
+    if (text.trim().isEmpty) return;
 
     // Always route through the widget so attached files are included.
     // The widget checks asrAutoSend and sends with files if present.
     lastTranscription = text;
     notifyListeners();
+  }
+
+  /// Remove the last occurrence of "hey buddy" and everything after it.
+  static String _stripTrailingWakeWord(String text) {
+    final lower = text.toLowerCase();
+    // Find last occurrence of "hey buddy" (case-insensitive)
+    final idx = lower.lastIndexOf('hey buddy');
+    if (idx >= 0) {
+      text = text.substring(0, idx).trim();
+    }
+    return text;
   }
 
   Future<void> stopTts() async {

@@ -318,14 +318,25 @@ public class FGHelper {
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
 }
 "@
 \$proc = Get-Process -Name "school_bud_e_flutter" -ErrorAction SilentlyContinue | Select-Object -First 1
 if (\$proc -and \$proc.MainWindowHandle -ne [IntPtr]::Zero) {
-    [FGHelper]::ShowWindow(\$proc.MainWindowHandle, 9)  # SW_RESTORE
-    [FGHelper]::SetForegroundWindow(\$proc.MainWindowHandle)
-    Start-Sleep -Milliseconds 100
-    [FGHelper]::ShowWindow(\$proc.MainWindowHandle, 3)  # SW_MAXIMIZE
+    \$hwnd = \$proc.MainWindowHandle
+    \$isForeground = [FGHelper]::GetForegroundWindow() -eq \$hwnd
+    \$isMaximized = [FGHelper]::IsZoomed(\$hwnd)
+    if ([FGHelper]::IsIconic(\$hwnd)) {
+        [FGHelper]::ShowWindow(\$hwnd, 9)  # SW_RESTORE
+    }
+    if (-not \$isForeground) {
+        [FGHelper]::SetForegroundWindow(\$hwnd)
+    }
+    if (-not \$isMaximized) {
+        Start-Sleep -Milliseconds 100
+        [FGHelper]::ShowWindow(\$hwnd, 3)  # SW_MAXIMIZE
+    }
 }
 ''';
         await File(scriptPath).writeAsString(script);
