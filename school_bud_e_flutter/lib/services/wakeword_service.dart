@@ -21,7 +21,7 @@ class WakeWordService {
   static const int windowSamples = 40000; // 2.5s ring buffer
   static const int slideSamples = 8000;   // 0.5s slide
   static const int recordChunkMs = 600;   // record slightly more than 0.5s
-  static const double threshold = 0.1;
+  static const double threshold = 0.15;
   static const int embeddingWindow = 76;
   static const int embeddingStride = 8;
   static const int minEmbeddings = 16;
