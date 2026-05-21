@@ -1,7 +1,10 @@
 /// Image registry — assigns unique IDs to every image in the conversation.
 /// Allows BUD-E and the user to reference specific images by ID.
+/// Persists to JSON so images survive app restarts.
 library;
 
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 
 /// A registered image with a unique ID.
@@ -92,5 +95,34 @@ class ImageRegistry {
   void clear() {
     _images.clear();
     _usedIds.clear();
+  }
+
+  /// Save registry to a JSON file.
+  Future<void> saveTo(String path) async {
+    final data = _images.map((i) => i.toJson()).toList();
+    await File(path).writeAsString(jsonEncode(data));
+  }
+
+  /// Load registry from a JSON file (merges with existing).
+  Future<void> loadFrom(String path) async {
+    final file = File(path);
+    if (!await file.exists()) return;
+    try {
+      final data = jsonDecode(await file.readAsString()) as List;
+      for (final item in data) {
+        final m = item as Map<String, dynamic>;
+        final id = m['id'] as String? ?? '';
+        final filePath = m['filePath'] as String? ?? '';
+        if (id.isEmpty || filePath.isEmpty) continue;
+        if (_usedIds.contains(id)) continue;
+        _usedIds.add(id);
+        _images.add(RegisteredImage(
+          id: id,
+          filePath: filePath,
+          source: m['source'] as String? ?? 'loaded',
+          prompt: m['prompt'] as String?,
+        ));
+      }
+    } catch (_) {}
   }
 }

@@ -91,6 +91,7 @@ class ChatProvider extends ChangeNotifier {
 
   /// Image registry — tracks all images with unique IDs.
   final ImageRegistry imageRegistry = ImageRegistry();
+  String get _imageRegistryPath => p.join(storage.rootPath, 'image_registry.json');
 
   ChatProvider({required this.storage}) {
     memory = MemoryStore(storage: storage);
@@ -102,6 +103,9 @@ class ChatProvider extends ChangeNotifier {
     S.setLanguage(storage.defaultLanguage);
     wakeWordService = WakeWordService();
     debugLog(DebugSource.system, 'ChatProvider initialized');
+
+    // Load persisted image registry
+    imageRegistry.loadFrom(_imageRegistryPath).catchError((_) {});
 
     // Build BM25 indexes in background
     memorySearch.buildIndex().catchError((_) {});
@@ -231,6 +235,7 @@ class ChatProvider extends ChangeNotifier {
       if ({'.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'}.contains(ext)) {
         multimodalFiles.add(fp);
         final imgId = imageRegistry.register(fp, source: 'uploaded');
+        imageRegistry.saveTo(_imageRegistryPath).catchError((_) {});
         textContents.add('[Bild hochgeladen: ${p.basename(fp)}, ID: $imgId]');
       } else if ({'.wav', '.mp3', '.ogg', '.m4a', '.flac', '.aac'}.contains(ext)) {
         audioFiles.add(fp);
@@ -1199,9 +1204,10 @@ class ChatProvider extends ChangeNotifier {
       if (!await wsDir.exists()) await wsDir.create(recursive: true);
       await File(filePath).writeAsBytes(base64Decode(b64));
 
-      // Register in image registry
+      // Register in image registry and persist
       final imageId = imageRegistry.register(filePath,
           source: 'generated', prompt: prompt);
+      imageRegistry.saveTo(_imageRegistryPath).catchError((_) {});
 
       debugLog(DebugSource.mainAgent,
           'Image saved: $imageId -> $filePath (${b64.length ~/ 1024} KB)');

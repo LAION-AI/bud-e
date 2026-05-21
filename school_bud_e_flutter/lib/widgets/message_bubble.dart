@@ -869,7 +869,26 @@ class _RichTextWithFiles extends StatelessWidget {
         // Resolve IMG_xxx to inline image
         final chat = context.read<ChatProvider>();
         final img = chat.imageRegistry.findById(match.value);
-        if (img != null && File(img.filePath).existsSync()) {
+        String? filePath = img?.filePath;
+
+        // If not in registry, search workspace for matching file
+        if (filePath == null || !File(filePath).existsSync()) {
+          final wsDir = Directory(chat.workspacePath);
+          if (wsDir.existsSync()) {
+            for (final f in wsDir.listSync()) {
+              if (f is File) {
+                final name = p.basename(f.path).toLowerCase();
+                if (name.contains(match.value.toLowerCase().replaceAll('img_', '')) &&
+                    (name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.webp'))) {
+                  filePath = f.path;
+                  break;
+                }
+              }
+            }
+          }
+        }
+
+        if (filePath != null && File(filePath).existsSync()) {
           spans.add(WidgetSpan(
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
@@ -877,7 +896,7 @@ class _RichTextWithFiles extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 400, maxHeight: 400),
-                  child: Image.file(File(img.filePath), fit: BoxFit.contain),
+                  child: Image.file(File(filePath), fit: BoxFit.contain),
                 ),
               ),
             ),
