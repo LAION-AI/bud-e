@@ -114,7 +114,9 @@ class ChatProvider extends ChangeNotifier {
     // Initialize wake word detection in background and auto-start
     wakeWordService.init().then((_) {
       if (wakeWordService.isReady) {
-        wakeWordService.onWakeWordDetected = _onWakeWord;
+        wakeWordService.onHeyBuddy = _onHeyBuddy;
+        wakeWordService.onGoBuddy = _onGoBuddy;
+        wakeWordService.onStopBuddy = _onStopBuddy;
         debugLog(DebugSource.system, 'WakeWord ready — auto-starting');
         wakeWordService.startListening();
         notifyListeners();
@@ -127,21 +129,36 @@ class ChatProvider extends ChangeNotifier {
     _checkDailyConsolidation();
   }
 
-  /// Called when wake word "hey buddy" is detected.
-  /// If not recording: start ASR recording (wake word keeps listening).
-  /// If already recording: stop recording & send.
-  void _onWakeWord() {
-    if (_isLoading) return;
-    if (_isRecording) {
-      // Second "Hey Buddy" → stop recording and send
-      debugLog(DebugSource.system, 'Wake word: stop recording & send');
-      stopRecordingAndTranscribe();
-    } else {
-      // First "Hey Buddy" → start recording (wake word keeps running)
-      debugLog(DebugSource.system, 'Wake word: start recording');
-      startRecording();
-    }
+  /// "Hey Buddy" → start ASR recording, switch wake word to recording state.
+  void _onHeyBuddy() {
+    if (_isRecording || _isLoading) return;
+    debugLog(DebugSource.system, 'Hey Buddy → start recording');
+    wakeWordService.state = WakeWordState.recording;
+    startRecording();
     notifyListeners();
+  }
+
+  /// "Go Buddy" → stop recording and submit transcription.
+  void _onGoBuddy() {
+    if (!_isRecording) return;
+    debugLog(DebugSource.system, 'Go Buddy → submit recording');
+    wakeWordService.state = WakeWordState.idle;
+    stopRecordingAndTranscribe();
+    notifyListeners();
+  }
+
+  /// "Stop Buddy" → cancel recording OR stop TTS.
+  void _onStopBuddy() {
+    if (_isRecording) {
+      debugLog(DebugSource.system, 'Stop Buddy → cancel recording');
+      wakeWordService.state = WakeWordState.idle;
+      _isRecording = false;
+      _asrService.stopAndTranscribe(universalApiKey); // discard result
+      notifyListeners();
+    } else if (_ttsService.isPlaying) {
+      debugLog(DebugSource.system, 'Stop Buddy → stop TTS');
+      stopTts();
+    }
   }
 
   /// Toggle wake word listening on/off.
@@ -1913,14 +1930,19 @@ REGELN:
     notifyListeners();
   }
 
-  /// Remove the last occurrence of "hey buddy" and everything after it.
+  /// Remove trailing wake word phrases ("hey buddy", "go buddy", "stop buddy")
+  /// and everything after the first trailing occurrence.
   static String _stripTrailingWakeWord(String text) {
-    final lower = text.toLowerCase();
-    // Find last occurrence of "hey buddy" (case-insensitive)
-    final idx = lower.lastIndexOf('hey buddy');
-    if (idx >= 0) {
-      text = text.substring(0, idx).trim();
-    }
+    // Strip trailing "go buddy" variants first (most common in transcription)
+    // Matches: "go buddy", "go, buddy", "Go Buddy", "Go, Buddy", "gobuddy" etc.
+    text = text.replaceAll(
+        RegExp(r'[,.\s]*\bgo[,\s]*budd?y\b.*$', caseSensitive: false), '').trim();
+    // Strip trailing "hey buddy"
+    text = text.replaceAll(
+        RegExp(r'[,.\s]*\bhey[,\s]*budd?y\b.*$', caseSensitive: false), '').trim();
+    // Strip trailing "stop buddy"
+    text = text.replaceAll(
+        RegExp(r'[,.\s]*\bstop[,\s]*budd?y\b.*$', caseSensitive: false), '').trim();
     return text;
   }
 

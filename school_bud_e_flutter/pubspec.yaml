@@ -44,3 +44,13 @@ flutter:
     - assets/embedding_model.onnx
     - assets/hey_buddy_de_small.onnx
     - assets/hey_buddy_de_medium.onnx
+    - assets/hey_buddy_en_medium.onnx
+    - assets/hey_buddy_en_medium_v2.onnx
+    - assets/hey_buddy_en_large.onnx
+    - assets/hey_buddy_en_large_v3.onnx
+    - assets/stop_buddy_en_medium.onnx
+    - assets/stop_buddy_en_large.onnx
+    - assets/stop_buddy_en_large_v3.onnx
+    - assets/go_buddy_en_medium.onnx
+    - assets/go_buddy_en_large.onnx
+    - assets/go_buddy_en_large_v3.onnx

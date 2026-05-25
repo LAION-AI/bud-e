@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/chat_provider.dart';
@@ -42,6 +43,9 @@ class _SchoolBudEAppState extends State<SchoolBudEApp> {
 
   void _startDebugServer(ChatProvider chat) {
     if (_debugServer != null) return;
+    // Only start debug API server on desktop — Android doesn't need it
+    // and port binding can fail or trigger security warnings
+    if (Platform.isAndroid || Platform.isIOS) return;
     _debugServer = DebugApiServer(chat, debugRepaintKey, navigatorKey);
     _debugServer!.start();
   }

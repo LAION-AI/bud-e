@@ -281,6 +281,7 @@ Uint8List _buildZip(String bodyXml, {Map<String, List<int>>? images}) {
       '<w:pgSz w:w="11906" w:h="16838"/>'  // A4
       '<w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" '
       'w:header="720" w:footer="720"/>'  // 1 inch margins
+      '<w:footerReference w:type="default" r:id="rFtr1"/>'
       '</w:sectPr></w:body></w:document>';
 
   // styles.xml — defines fonts, heading styles, bullet style
@@ -332,10 +333,23 @@ Uint8List _buildZip(String bodyXml, {Map<String, List<int>>? images}) {
   }
 
   // Build document relationships including images
+  // Footer with page numbers
+  final footerXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      '<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+      '<w:p><w:pPr><w:jc w:val="center"/></w:pPr>'
+      '<w:r><w:rPr><w:sz w:val="18"/><w:color w:val="999999"/></w:rPr>'
+      '<w:t xml:space="preserve">Seite </w:t></w:r>'
+      '<w:r><w:rPr><w:sz w:val="18"/><w:color w:val="999999"/></w:rPr>'
+      '<w:fldChar w:fldCharType="begin"/></w:r>'
+      '<w:r><w:instrText> PAGE </w:instrText></w:r>'
+      '<w:r><w:fldChar w:fldCharType="end"/></w:r>'
+      '</w:p></w:ftr>';
+
   final relsBuf = StringBuffer(
       '<?xml version="1.0" encoding="UTF-8"?>'
       '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>');
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
+      '<Relationship Id="rFtr1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>');
   if (images != null) {
     for (final rId in images.keys) {
       relsBuf.write('<Relationship Id="$rId" '
@@ -354,6 +368,7 @@ Uint8List _buildZip(String bodyXml, {Map<String, List<int>>? images}) {
         '$ctExtra'
         '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
         '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'
+        '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>'
         '</Types>'),
     '_rels/.rels': utf8.encode(
         '<?xml version="1.0" encoding="UTF-8"?>'
@@ -362,6 +377,7 @@ Uint8List _buildZip(String bodyXml, {Map<String, List<int>>? images}) {
         '</Relationships>'),
     'word/document.xml': utf8.encode(docXml),
     'word/styles.xml': utf8.encode(stylesXml),
+    'word/footer1.xml': utf8.encode(footerXml),
     'word/_rels/document.xml.rels': utf8.encode(relsBuf.toString()),
   };
 

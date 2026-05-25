@@ -753,6 +753,28 @@ class SubAgentRunner {
           final resolved = _resolvePath(htmlPath, workspacePath);
           if (!await File(resolved).exists()) return 'HTML-Datei nicht gefunden: $htmlPath';
           var html = await File(resolved).readAsString();
+          // Extract base64 images from <img> tags before stripping HTML
+          final imgMap = <String, String>{};
+          final imgRe = RegExp(r'<img[^>]+src="data:image/[^;]+;base64,([^"]+)"[^>]*>', caseSensitive: false);
+          var imgIdx = 0;
+          html = html.replaceAllMapped(imgRe, (m) {
+            imgIdx++;
+            final id = 'HTMLIMG_$imgIdx';
+            final tempPath = p.join(workspacePath, '_tmp_img_$imgIdx.png');
+            try {
+              File(tempPath).writeAsBytesSync(base64Decode(m.group(1)!));
+              imgMap[id] = tempPath;
+            } catch (_) {}
+            return id;
+          });
+          // Also map imageRegistry images
+          if (imageRegistry != null) {
+            for (final img in imageRegistry!.images) {
+              if (html.contains(img.id)) {
+                imgMap[img.id] = img.filePath;
+              }
+            }
+          }
           // Convert HTML to Markdown for DOCX generation
           final md = html
               .replaceAll(RegExp(r'<br\s*/?>'), '\n')
@@ -771,8 +793,14 @@ class SubAgentRunner {
               .replaceAll('&amp;', '&').replaceAll('&lt;', '<').replaceAll('&gt;', '>')
               .replaceAll('&nbsp;', ' ').replaceAll(RegExp(r'\n{3,}'), '\n\n');
           final resolvedOut = _resolvePath(outputPath, workspacePath);
-          final actualPath = await writeDocx(md, resolvedOut);
+          final actualPath = await writeDocx(md, resolvedOut, imageFiles: imgMap.isNotEmpty ? imgMap : null);
           task.addGeneratedFile(actualPath);
+          // Clean up temp images
+          for (final path in imgMap.values) {
+            if (p.basename(path).startsWith('_tmp_img_')) {
+              try { File(path).deleteSync(); } catch (_) {}
+            }
+          }
           return 'DOCX erstellt aus HTML: ${p.basename(actualPath)}';
         }(),
       'html_to_pdf' => () async {

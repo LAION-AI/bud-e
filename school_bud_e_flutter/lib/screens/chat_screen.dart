@@ -21,47 +21,21 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final _scrollController = ScrollController();
-  int _lastMessageCount = 0;
-  bool _wasLoading = false;
   bool _userScrolledUp = false;
-  bool _userIsInteracting = false; // true while user is actively scrolling
-
-  @override
-  void initState() {
-    super.initState();
-    _scrollController.addListener(_onScroll);
-  }
 
   @override
   void dispose() {
-    _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
   }
 
-  void _onScroll() {
-    if (!_scrollController.hasClients) return;
-    final pos = _scrollController.position;
-    final wasUp = _userScrolledUp;
-    _userScrolledUp = pos.pixels < pos.maxScrollExtent - 150;
-    if (wasUp != _userScrolledUp) setState(() {});
-  }
-
-  void _scrollToBottom({bool animate = true}) {
-    if (_userIsInteracting) return; // never interrupt user scrolling
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients && !_userIsInteracting) {
-        final target = _scrollController.position.maxScrollExtent;
-        if (animate) {
-          _scrollController.animateTo(target,
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeOut);
-        } else {
-          _scrollController.jumpTo(target);
-        }
-        _userScrolledUp = false;
-      }
-    });
+  void _scrollToBottom() {
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(0,
+          duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
+    }
+    _userScrolledUp = false;
+    setState(() {});
   }
 
   void _copyFullConversation(ChatProvider chat) {
@@ -179,106 +153,99 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final chat = context.watch<ChatProvider>();
     final colors = Theme.of(context).colorScheme;
-    final greeting = chat.storage.personaName;
-
-    // Only scroll to bottom when a NEW user message is added (they just sent something)
-    if (chat.messages.length != _lastMessageCount) {
-      final isNew = chat.messages.length > _lastMessageCount;
-      _lastMessageCount = chat.messages.length;
-      // Only auto-scroll for user's own new messages
-      if (isNew && !_userScrolledUp && !_userIsInteracting) {
-        final lastMsg = chat.messages.last;
-        if (lastMsg.role == MessageRole.user) {
-          _scrollToBottom(animate: false);
-        }
-      }
-    }
-    _wasLoading = chat.isLoading;
 
     return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.history),
-          tooltip: 'Conversation history',
-          onPressed: _showConversationHistory,
-        ),
-        title: Text(greeting),
-        actions: [
-          // Wake word toggle
-          if (chat.wakeWordService.isReady)
-            IconButton(
-              icon: Icon(
-                chat.isWakeWordListening ? Icons.hearing : Icons.hearing_disabled,
-                color: chat.isWakeWordListening ? colors.primary : colors.outline,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(kToolbarHeight),
+        child: Selector<ChatProvider, ({String name, bool wwReady, bool wwListening, bool ttsPlaying, bool ttsEnabled})>(
+          selector: (_, p) => (
+            name: p.storage.personaName,
+            wwReady: p.wakeWordService.isReady,
+            wwListening: p.isWakeWordListening,
+            ttsPlaying: p.ttsServiceForReplay.isPlaying,
+            ttsEnabled: p.ttsEnabled,
+          ),
+          builder: (ctx, s, _) => AppBar(
+            leading: IconButton(
+              icon: const Icon(Icons.history),
+              tooltip: 'Conversation history',
+              onPressed: _showConversationHistory,
+            ),
+            title: Text(s.name),
+            actions: [
+              if (s.wwReady)
+                IconButton(
+                  icon: Icon(
+                    s.wwListening ? Icons.hearing : Icons.hearing_disabled,
+                    color: s.wwListening ? colors.primary : colors.outline,
+                  ),
+                  tooltip: s.wwListening ? 'Hey Buddy aus' : 'Hey Buddy an',
+                  onPressed: () => ctx.read<ChatProvider>().toggleWakeWord(),
+                ),
+              IconButton(
+                icon: Icon(
+                  s.ttsPlaying
+                      ? Icons.stop_circle_rounded
+                      : s.ttsEnabled
+                          ? Icons.volume_up_rounded
+                          : Icons.volume_off_rounded,
+                  color: s.ttsPlaying
+                      ? colors.error
+                      : s.ttsEnabled ? colors.primary : colors.outline,
+                ),
+                tooltip: s.ttsPlaying
+                    ? 'TTS stoppen'
+                    : s.ttsEnabled ? 'TTS aus' : 'TTS an',
+                onPressed: () {
+                  final chat = ctx.read<ChatProvider>();
+                  if (s.ttsPlaying) {
+                    chat.stopTts();
+                  } else {
+                    chat.setTtsEnabled(!s.ttsEnabled);
+                  }
+                },
               ),
-              tooltip: chat.isWakeWordListening ? 'Hey Buddy aus' : 'Hey Buddy an',
-              onPressed: () => chat.toggleWakeWord(),
-            ),
-          // TTS on/off + stop if playing
-          IconButton(
-            icon: Icon(
-              chat.ttsServiceForReplay.isPlaying
-                  ? Icons.stop_circle_rounded
-                  : chat.ttsEnabled
-                      ? Icons.volume_up_rounded
-                      : Icons.volume_off_rounded,
-              color: chat.ttsServiceForReplay.isPlaying
-                  ? colors.error
-                  : chat.ttsEnabled ? colors.primary : colors.outline,
-            ),
-            tooltip: chat.ttsServiceForReplay.isPlaying
-                ? 'TTS stoppen'
-                : chat.ttsEnabled ? 'TTS aus' : 'TTS an',
-            onPressed: () {
-              if (chat.ttsServiceForReplay.isPlaying) {
-                chat.stopTts();
-              } else {
-                chat.setTtsEnabled(!chat.ttsEnabled);
-              }
-            },
-          ),
-          // New chat
-          IconButton(
-            icon: const Icon(Icons.add_comment_outlined),
-            tooltip: 'New chat',
-            onPressed: () => chat.clearConversation(),
-          ),
-          // More menu
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert),
-            onSelected: (v) {
-              switch (v) {
-                case 'settings':
-                  Navigator.push(context,
-                      MaterialPageRoute(builder: (_) => const SettingsScreen()));
-                case 'debug':
-                  Navigator.push(context,
-                      MaterialPageRoute(builder: (_) => const DebugScreen()));
-                case 'memory':
-                  Navigator.push(context,
-                      MaterialPageRoute(builder: (_) => const MemoryExplorerScreen()));
-                case 'copy_all':
-                  _copyFullConversation(chat);
-              }
-            },
-            itemBuilder: (_) => [
-              const PopupMenuItem(value: 'copy_all',
-                  child: ListTile(leading: Icon(Icons.copy_all),
-                      title: Text('Gesamte Konversation kopieren'), dense: true, contentPadding: EdgeInsets.zero)),
-              const PopupMenuItem(value: 'memory',
-                  child: ListTile(leading: Icon(Icons.folder_special),
-                      title: Text('Memory Explorer'), dense: true, contentPadding: EdgeInsets.zero)),
-              const PopupMenuItem(value: 'debug',
-                  child: ListTile(leading: Icon(Icons.bug_report),
-                      title: Text('Debug Log'), dense: true, contentPadding: EdgeInsets.zero)),
-              const PopupMenuItem(value: 'settings',
-                  child: ListTile(leading: Icon(Icons.settings),
-                      title: Text('Settings'), dense: true, contentPadding: EdgeInsets.zero)),
+              IconButton(
+                icon: const Icon(Icons.add_comment_outlined),
+                tooltip: 'New chat',
+                onPressed: () => ctx.read<ChatProvider>().clearConversation(),
+              ),
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert),
+                onSelected: (v) {
+                  switch (v) {
+                    case 'settings':
+                      Navigator.push(context,
+                          MaterialPageRoute(builder: (_) => const SettingsScreen()));
+                    case 'debug':
+                      Navigator.push(context,
+                          MaterialPageRoute(builder: (_) => const DebugScreen()));
+                    case 'memory':
+                      Navigator.push(context,
+                          MaterialPageRoute(builder: (_) => const MemoryExplorerScreen()));
+                    case 'copy_all':
+                      _copyFullConversation(ctx.read<ChatProvider>());
+                  }
+                },
+                itemBuilder: (_) => [
+                  const PopupMenuItem(value: 'copy_all',
+                      child: ListTile(leading: Icon(Icons.copy_all),
+                          title: Text('Gesamte Konversation kopieren'), dense: true, contentPadding: EdgeInsets.zero)),
+                  const PopupMenuItem(value: 'memory',
+                      child: ListTile(leading: Icon(Icons.folder_special),
+                          title: Text('Memory Explorer'), dense: true, contentPadding: EdgeInsets.zero)),
+                  const PopupMenuItem(value: 'debug',
+                      child: ListTile(leading: Icon(Icons.bug_report),
+                          title: Text('Debug Log'), dense: true, contentPadding: EdgeInsets.zero)),
+                  const PopupMenuItem(value: 'settings',
+                      child: ListTile(leading: Icon(Icons.settings),
+                          title: Text('Settings'), dense: true, contentPadding: EdgeInsets.zero)),
+                ],
+              ),
             ],
           ),
-        ],
+        ),
       ),
       body: Column(
         children: [
@@ -287,27 +254,33 @@ class _ChatScreenState extends State<ChatScreen> {
               children: [
                 NotificationListener<ScrollNotification>(
                   onNotification: (n) {
-                    if (n is ScrollStartNotification && n.dragDetails != null) {
-                      _userIsInteracting = true;
-                    } else if (n is ScrollEndNotification) {
-                      // Delay reset so post-frame callbacks don't fire during deceleration
-                      Future.delayed(const Duration(milliseconds: 300), () {
-                        _userIsInteracting = false;
-                      });
+                    // Only track user-initiated drags — ignore layout/content changes
+                    if (n is ScrollUpdateNotification && n.dragDetails != null) {
+                      final pos = _scrollController.position;
+                      // In a reversed list, 0 = bottom, positive = scrolled up
+                      final nowUp = pos.pixels > 150;
+                      if (nowUp != _userScrolledUp) {
+                        _userScrolledUp = nowUp;
+                        setState(() {});
+                      }
                     }
                     return false;
                   },
-                  child: chat.messages.isEmpty
-                      ? _buildWelcome(context, colors, greeting)
-                      : _buildMessageList(context, chat, colors),
+                  child: Consumer<ChatProvider>(
+                    builder: (ctx, chat, _) {
+                      if (chat.messages.isEmpty) {
+                        return _buildWelcome(ctx, colors);
+                      }
+                      return _buildMessageList(ctx, chat);
+                    },
+                  ),
                 ),
-                // Scroll-to-bottom button when scrolled up
-                if (_userScrolledUp && chat.messages.isNotEmpty)
+                if (_userScrolledUp)
                   Positioned(
                     bottom: 8,
                     right: 16,
                     child: FloatingActionButton.small(
-                      onPressed: () { _userIsInteracting = false; _scrollToBottom(); },
+                      onPressed: _scrollToBottom,
                       backgroundColor: colors.primaryContainer,
                       child: Icon(Icons.keyboard_arrow_down, color: colors.primary),
                     ),
@@ -315,20 +288,23 @@ class _ChatScreenState extends State<ChatScreen> {
               ],
             ),
           ),
-          if (chat.isLoading)
-            LinearProgressIndicator(
-              backgroundColor: colors.surfaceContainerHighest,
-              color: colors.primary,
-              minHeight: 2,
-            ),
+          Selector<ChatProvider, bool>(
+            selector: (_, p) => p.isLoading,
+            builder: (_, loading, __) => loading
+                ? LinearProgressIndicator(
+                    backgroundColor: colors.surfaceContainerHighest,
+                    color: colors.primary,
+                    minHeight: 2,
+                  )
+                : const SizedBox.shrink(),
+          ),
           const ChatInput(),
         ],
       ),
     );
   }
 
-  Widget _buildMessageList(BuildContext context, ChatProvider chat, ColorScheme colors) {
-    // Find agent tasks that are NOT attached to any visible message
+  Widget _buildMessageList(BuildContext ctx, ChatProvider chat) {
     final attachedTaskIds = <String>{};
     for (final msg in chat.messages) {
       final tid = msg.metadata['agentTaskId'] as String?;
@@ -342,21 +318,36 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final totalItems = chat.messages.length + floatingAgents.length;
 
+    // reversed list: index 0 = newest item (bottom of screen)
+    // Floating agents come first (they're newest), then messages in reverse
     return ListView.builder(
       controller: _scrollController,
+      reverse: true, // anchor at bottom — no auto-scroll needed
       padding: const EdgeInsets.only(top: 12, bottom: 12),
       itemCount: totalItems,
-      addAutomaticKeepAlives: true,
+      cacheExtent: 2000,
       itemBuilder: (_, i) {
-        // Regular messages
-        if (i < chat.messages.length) {
-          final msg = chat.messages[i];
-          final taskId = msg.metadata['agentTaskId'] as String?;
-          final task = taskId != null ? chat.agentTasks[taskId] : null;
-          final branchInfo = chat.getBranchInfo(msg.id);
-          return RepaintBoundary(
-            key: ValueKey(msg.id),
-            child: MessageBubble(
+        // First N items in reversed list = floating agents (shown at bottom)
+        if (i < floatingAgents.length) {
+          final agentEntry = floatingAgents[floatingAgents.length - 1 - i];
+          return AgentTaskWidget(
+            task: agentEntry.value,
+            onStop: () => chat.stopAgent(agentEntry.key),
+          );
+        }
+
+        // Messages in reverse order
+        final msgIdx = chat.messages.length - 1 - (i - floatingAgents.length);
+        if (msgIdx < 0 || msgIdx >= chat.messages.length) {
+          return const SizedBox.shrink();
+        }
+        final msg = chat.messages[msgIdx];
+        final taskId = msg.metadata['agentTaskId'] as String?;
+        final task = taskId != null ? chat.agentTasks[taskId] : null;
+        final branchInfo = chat.getBranchInfo(msg.id);
+        return RepaintBoundary(
+          key: ValueKey(msg.id),
+          child: MessageBubble(
             message: msg,
             ttsService: chat.ttsServiceForReplay,
             universalApiKey: chat.universalApiKey,
@@ -365,26 +356,19 @@ class _ChatScreenState extends State<ChatScreen> {
             onSwitchBranch: branchInfo != null
                 ? (delta) => chat.switchBranch(msg.id, delta) : null,
             onRegenerate: msg.role == MessageRole.assistant
-                ? () => chat.regenerateMessage(i) : null,
+                ? () => chat.regenerateMessage(msgIdx) : null,
             onEdit: (_) {
               chat.storage.saveConversation(chat.conversation).catchError((_) {});
-              (context as Element).markNeedsBuild();
+              setState(() {});
             },
           ),
-          );
-        }
-
-        // Floating agent tasks (not attached to any message)
-        final agentEntry = floatingAgents[i - chat.messages.length];
-        return AgentTaskWidget(
-          task: agentEntry.value,
-          onStop: () => chat.stopAgent(agentEntry.key),
         );
       },
     );
   }
 
-  Widget _buildWelcome(BuildContext context, ColorScheme colors, String name) {
+  Widget _buildWelcome(BuildContext ctx, ColorScheme colors) {
+    final name = ctx.read<ChatProvider>().storage.personaName;
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(40),
@@ -408,14 +392,14 @@ class _ChatScreenState extends State<ChatScreen> {
             const SizedBox(height: 20),
             Text(
               S.welcomeTitle(name),
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+              style: Theme.of(ctx).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w600,
                   ),
             ),
             const SizedBox(height: 8),
             Text(
               S.welcomeSubtitle,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
                     color: colors.onSurfaceVariant,
                     height: 1.5,
                   ),
@@ -428,7 +412,7 @@ class _ChatScreenState extends State<ChatScreen> {
               alignment: WrapAlignment.center,
               children: [
                 for (final suggestion in S.welcomeSuggestions)
-                  _SuggestionChip(suggestion, context),
+                  _SuggestionChip(suggestion, ctx),
               ],
             ),
           ],
