@@ -111,15 +111,24 @@ class ChatProvider extends ChangeNotifier {
     memorySearch.buildIndex().catchError((_) {});
     bildungsplanSearch.buildIndex().catchError((_) {});
 
-    // Initialize wake word detection in background and auto-start
+    // Initialize wake word detection in background
+    // On Android: only init models, don't auto-start (user must enable manually)
+    // On desktop: auto-start as before
     wakeWordService.init().then((_) {
       if (wakeWordService.isReady) {
         wakeWordService.onHeyBuddy = _onHeyBuddy;
         wakeWordService.onGoBuddy = _onGoBuddy;
         wakeWordService.onStopBuddy = _onStopBuddy;
-        debugLog(DebugSource.system, 'WakeWord ready — auto-starting');
-        wakeWordService.startListening();
+        if (Platform.isAndroid || Platform.isIOS) {
+          debugLog(DebugSource.system, 'WakeWord ready — manual start on mobile');
+        } else {
+          debugLog(DebugSource.system, 'WakeWord ready — auto-starting');
+          wakeWordService.startListening();
+        }
         notifyListeners();
+      } else if (wakeWordService.initFailed) {
+        debugLog(DebugSource.system,
+            'WakeWord init failed: ${wakeWordService.initError}');
       }
     }).catchError((e) {
       debugLog(DebugSource.system, 'WakeWord init error: $e');

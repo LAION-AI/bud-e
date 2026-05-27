@@ -57,6 +57,8 @@ class WakeWordService {
   bool _isListening = false;
   bool _isProcessing = false;
   bool _modelsLoaded = false;
+  bool _initFailed = false; // prevents retry loops after native crash
+  String? _initError; // last init error message for UI
   DateTime _lastDetection = DateTime(2000);
   String? _beepPath;
   bool _shapeLogged = false;
@@ -81,8 +83,14 @@ class WakeWordService {
 
   bool get isListening => _isListening;
   bool get isReady => _modelsLoaded;
+  bool get initFailed => _initFailed;
+  String? get initError => _initError;
 
   Future<void> init() async {
+    if (_initFailed) {
+      debugLog(DebugSource.system, 'WakeWord: skipping init (previous failure)');
+      return;
+    }
     try {
       final tempDir = await getTemporaryDirectory();
       final modelDir = Directory(p.join(tempDir.path, 'wakeword_models'));
@@ -94,29 +102,47 @@ class WakeWordService {
       // Use medium models on Android (large v3 causes native crashes on some devices)
       // Use large v3 on desktop where they're stable and fast
       final String modelSize;
+      final String heyAsset, stopAsset, goAsset;
       if (Platform.isAndroid) {
         modelSize = 'medium';
-        final heyPath = await _copyAsset('assets/hey_buddy_en_medium.onnx', modelDir);
-        final stopPath = await _copyAsset('assets/stop_buddy_en_medium.onnx', modelDir);
-        final goPath = await _copyAsset('assets/go_buddy_en_medium.onnx', modelDir);
-        _melSession = await _ort.createSession(melPath);
-        _embSession = await _ort.createSession(embPath);
-        _heySession = await _ort.createSession(heyPath);
-        _stopSession = await _ort.createSession(stopPath);
-        _goSession = await _ort.createSession(goPath);
+        heyAsset = 'assets/hey_buddy_en_medium.onnx';
+        stopAsset = 'assets/stop_buddy_en_medium.onnx';
+        goAsset = 'assets/go_buddy_en_medium.onnx';
       } else {
         modelSize = 'large_v3';
-        final heyPath = await _copyAsset('assets/hey_buddy_en_large_v3.onnx', modelDir);
-        final stopPath = await _copyAsset('assets/stop_buddy_en_large_v3.onnx', modelDir);
-        final goPath = await _copyAsset('assets/go_buddy_en_large_v3.onnx', modelDir);
-        _melSession = await _ort.createSession(melPath);
-        _embSession = await _ort.createSession(embPath);
-        _heySession = await _ort.createSession(heyPath);
-        _stopSession = await _ort.createSession(stopPath);
-        _goSession = await _ort.createSession(goPath);
+        heyAsset = 'assets/hey_buddy_en_large_v3.onnx';
+        stopAsset = 'assets/stop_buddy_en_large_v3.onnx';
+        goAsset = 'assets/go_buddy_en_large_v3.onnx';
+      }
+
+      final heyPath = await _copyAsset(heyAsset, modelDir);
+      final stopPath = await _copyAsset(stopAsset, modelDir);
+      final goPath = await _copyAsset(goAsset, modelDir);
+
+      // Load each model individually — if one fails, we know which one
+      _melSession = await _loadSession('mel', melPath);
+      _embSession = await _loadSession('emb', embPath);
+      _heySession = await _loadSession('hey', heyPath);
+      _stopSession = await _loadSession('stop', stopPath);
+      _goSession = await _loadSession('go', goPath);
+
+      // Verify all loaded
+      if (_melSession == null || _embSession == null ||
+          _heySession == null || _stopSession == null || _goSession == null) {
+        throw StateError('One or more ONNX sessions failed to load');
       }
 
       debugLog(DebugSource.system, 'WakeWord: 5 ONNX models loaded ($modelSize)');
+
+      // Run a quick test inference to verify ONNX runtime works on this device
+      if (Platform.isAndroid) {
+        debugLog(DebugSource.system, 'WakeWord: running test inference...');
+        final testOk = await _testInference();
+        if (!testOk) {
+          throw StateError('Test inference failed — ONNX runtime incompatible');
+        }
+        debugLog(DebugSource.system, 'WakeWord: test inference OK');
+      }
 
       try {
         availableDevices = await _recorder.listInputDevices();
@@ -130,16 +156,65 @@ class WakeWordService {
       }
 
       _modelsLoaded = true;
+      _initFailed = false;
+      _initError = null;
     } catch (e, st) {
       debugLog(DebugSource.system, 'WakeWord init failed: $e\n$st');
+      _initError = e.toString();
+      _initFailed = true;
       // Clean up partially loaded sessions
-      _melSession = null;
-      _embSession = null;
-      _heySession = null;
-      _stopSession = null;
-      _goSession = null;
+      _closeSessions();
       _modelsLoaded = false;
     }
+  }
+
+  /// Load a single ONNX session with error reporting.
+  Future<OrtSession?> _loadSession(String name, String path) async {
+    try {
+      final session = await _ort.createSession(path);
+      debugLog(DebugSource.system, 'WakeWord: $name model loaded');
+      return session;
+    } catch (e) {
+      debugLog(DebugSource.system, 'WakeWord: $name model FAILED: $e');
+      return null;
+    }
+  }
+
+  /// Run a minimal test inference to verify ONNX runtime works.
+  Future<bool> _testInference() async {
+    try {
+      // Feed 1s of silence through mel → embedding pipeline
+      final silence = Float32List(sampleRate); // 1s of zeros
+      final melInputName = _melSession!.inputNames.first;
+      final melInput = await OrtValue.fromList(silence, [1, silence.length]);
+      final melOutputs = await _melSession!.run({melInputName: melInput});
+      final melValue = melOutputs.values.first;
+      await melValue.dispose();
+      await melInput.dispose();
+      return true;
+    } catch (e) {
+      debugLog(DebugSource.system, 'WakeWord: test inference failed: $e');
+      return false;
+    }
+  }
+
+  /// Reset the init failure flag to allow retrying.
+  void resetInitFailure() {
+    _initFailed = false;
+    _initError = null;
+  }
+
+  void _closeSessions() {
+    try { _melSession?.close(); } catch (_) {}
+    try { _embSession?.close(); } catch (_) {}
+    try { _heySession?.close(); } catch (_) {}
+    try { _stopSession?.close(); } catch (_) {}
+    try { _goSession?.close(); } catch (_) {}
+    _melSession = null;
+    _embSession = null;
+    _heySession = null;
+    _stopSession = null;
+    _goSession = null;
   }
 
   Future<String> _copyAsset(String assetPath, Directory targetDir) async {
@@ -490,8 +565,7 @@ if (\$proc -and \$proc.MainWindowHandle -ne [IntPtr]::Zero) {
 
   void dispose() {
     stopListening();
-    _melSession?.close(); _embSession?.close();
-    _heySession?.close(); _stopSession?.close(); _goSession?.close();
+    _closeSessions();
     _sfxPlayer.dispose(); _recorder.dispose();
   }
 }
