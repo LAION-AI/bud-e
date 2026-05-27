@@ -430,6 +430,9 @@ class WakeWordService {
   }
 
   Future<void> _bringToForeground() async {
+    // Only on desktop — on Android the intent-based approach causes
+    // activity restarts and crashes. Mobile users already have the app open.
+    if (Platform.isAndroid || Platform.isIOS) return;
     if (Platform.isWindows) {
       try {
         final tempDir = await getTemporaryDirectory();
